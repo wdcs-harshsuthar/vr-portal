@@ -67,16 +67,19 @@ const BookTour: React.FC = () => {
   };
 
   const handlePayment = async () => {
-    if (isLoading) return; // Prevent multiple clicks
+    if (isLoading || !user) return;
     
     setIsLoading(true);
     setError('');
 
     try {
-      // Create booking directly (simulating successful payment)
-      const bookingData = {
-        user_id: user!.id,
-        date: selectedDate!.toISOString().split('T')[0],
+      console.log('Starting payment process...');
+      
+      // Simulate payment processing (2 seconds)
+      await new Promise(resolve => setTimeout(resolve, 2000));
+      console.log('Payment simulation completed');
+      
+      // Create booking data
         location: selectedLocation,
         time_slot: selectedTimeSlot,
         participants,
@@ -85,12 +88,18 @@ const BookTour: React.FC = () => {
         status: 'confirmed' as const
       };
 
+      console.log('Creating booking with data:', bookingData);
+      
+      // Create the booking
       const bookingResult = await createBooking(bookingData);
       
       if (!bookingResult.success) {
+        console.error('Booking creation failed:', result.error);
         throw new Error(bookingResult.error || 'Failed to create booking');
       }
 
+      console.log('Booking created successfully:', result.booking);
+      
       // Close payment form and show success
       setShowPaymentForm(false);
       setSuccess(true);
