@@ -44,13 +44,12 @@ Deno.serve(async (req: Request) => {
     const hashArray = Array.from(new Uint8Array(hashBuffer));
     const password_hash = hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
 
-    // Find user with matching email and password
+    // Find user with matching email and password - only use existing columns
     const { data: user, error: userError } = await supabase
       .from('users')
-      .select('id, name, email, role, is_active')
+      .select('id, name, email')
       .eq('email', email)
       .eq('password_hash', password_hash)
-      .eq('is_active', true)
       .single();
 
     if (userError || !user) {
@@ -63,18 +62,18 @@ Deno.serve(async (req: Request) => {
       );
     }
 
-    // Create JWT token
+    // Create JWT token with default user role
     const tokenPayload = {
       userId: user.id,
       email: user.email,
-      role: user.role,
+      role: 'user',
       iat: Math.floor(Date.now() / 1000),
       exp: Math.floor(Date.now() / 1000) + (7 * 24 * 60 * 60) // 7 days
     };
 
     const jwtToken = sign(tokenPayload, JWT_SECRET);
 
-    // Create session record
+    // Create session record - only use existing columns
     const sessionToken = crypto.randomUUID();
     const expiresAt = new Date();
     expiresAt.setDate(expiresAt.getDate() + 7);
@@ -91,11 +90,11 @@ Deno.serve(async (req: Request) => {
       .insert({
         user_id: user.id,
         token: sessionToken,
-        user_role: user.role,
         expires_at: expiresAt.toISOString()
       });
 
     if (sessionError) {
+      console.error('Session creation error:', sessionError);
       throw sessionError;
     }
 
@@ -106,7 +105,7 @@ Deno.serve(async (req: Request) => {
           id: user.id,
           name: user.name,
           email: user.email,
-          role: user.role
+          role: 'user'
         },
         token: jwtToken,
         sessionToken,

@@ -27,7 +27,7 @@ Deno.serve(async (req: Request) => {
       Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? ''
     );
 
-    const { name, email, password, role = 'user' }: SignupRequest = await req.json();
+    const { name, email, password }: SignupRequest = await req.json();
 
     // Validation
     if (!name || !email || !password) {
@@ -43,16 +43,6 @@ Deno.serve(async (req: Request) => {
     if (password.length < 6) {
       return new Response(
         JSON.stringify({ error: 'Password must be at least 6 characters long' }),
-        { 
-          status: 400, 
-          headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
-        }
-      );
-    }
-
-    if (!['user', 'admin'].includes(role)) {
-      return new Response(
-        JSON.stringify({ error: 'Invalid role. Must be either "user" or "admin"' }),
         { 
           status: 400, 
           headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
@@ -84,20 +74,20 @@ Deno.serve(async (req: Request) => {
     const hashArray = Array.from(new Uint8Array(hashBuffer));
     const password_hash = hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
 
-    // Create user
+    // Create user - only use existing columns
     const { data: newUser, error: userError } = await supabase
       .from('users')
       .insert({
         name: name.trim(),
         email: email.toLowerCase().trim(),
-        password_hash,
-        role
+        password_hash
       })
       .select('id, name, email')
       .single();
 
     if (userError) {
-      if (userError.code === '23505') { // Unique constraint violation
+      console.error('User creation error:', userError);
+      if (userError.code === '23505') {
         return new Response(
           JSON.stringify({ error: 'User already exists with this email' }),
           { 
@@ -109,18 +99,18 @@ Deno.serve(async (req: Request) => {
       throw userError;
     }
 
-    // Create JWT token
+    // Create JWT token with default user role
     const tokenPayload = {
       userId: newUser.id,
       email: newUser.email,
-      role: 'user', // Default role since column doesn't exist yet
+      role: 'user',
       iat: Math.floor(Date.now() / 1000),
       exp: Math.floor(Date.now() / 1000) + (7 * 24 * 60 * 60) // 7 days
     };
 
     const jwtToken = sign(tokenPayload, JWT_SECRET);
 
-    // Create session
+    // Create session - only use existing columns
     const sessionToken = crypto.randomUUID();
     const expiresAt = new Date();
     expiresAt.setDate(expiresAt.getDate() + 7);
@@ -130,11 +120,11 @@ Deno.serve(async (req: Request) => {
       .insert({
         user_id: newUser.id,
         token: sessionToken,
-        expires_at: expiresAt.toISOString(),
-        user_role: role
+        expires_at: expiresAt.toISOString()
       });
 
     if (sessionError) {
+      console.error('Session creation error:', sessionError);
       throw sessionError;
     }
 
@@ -146,7 +136,7 @@ Deno.serve(async (req: Request) => {
           id: newUser.id,
           name: newUser.name,
           email: newUser.email,
-          role: newUser.role
+          role: 'user'
         },
         token: jwtToken,
         sessionToken,
