@@ -67,11 +67,7 @@ const Signup: React.FC = () => {
     setIsLoading(true);
 
     try {
-      const result = await signup({
-        name: formData.name,
-        email: formData.email,
-        password: formData.password
-      });
+      const result = await signup(formData.email, formData.password, formData.name);
       
       if (result.success) {
         // Navigate to dashboard on successful signup

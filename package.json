@@ -11,6 +11,11 @@
   },
   "dependencies": {
     "@stripe/stripe-js": "^7.9.0",
+<<<<<<< HEAD
+=======
+    "@supabase/supabase-js": "^2.56.0",
+    "jsonwebtoken": "^9.0.2",
+>>>>>>> 8c9d782b51df86acdf3f79094d50305611f9cc65
     "lucide-react": "^0.344.0",
     "react": "^18.3.1",
     "react-dom": "^18.3.1",
@@ -18,6 +23,7 @@
   },
   "devDependencies": {
     "@eslint/js": "^9.9.1",
+    "@types/jsonwebtoken": "^9.0.10",
     "@types/react": "^18.3.5",
     "@types/react-dom": "^18.3.0",
     "@vitejs/plugin-react": "^4.3.1",

@@ -39,7 +39,7 @@ const Login: React.FC = () => {
     setErrors({});
 
     try {
-      const result = await login({ email, password });
+      const result = await login(email, password);
       if (result.success) {
         // Check if user is admin and redirect accordingly
         if (result.user?.role === 'admin') {

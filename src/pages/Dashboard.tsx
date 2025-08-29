@@ -4,18 +4,7 @@ import { useAuth } from '../contexts/AuthContext';
 import { Calendar, MapPin, Clock, Users, Plus, Eye, CheckCircle, AlertCircle, XCircle } from 'lucide-react';
 
 const Dashboard: React.FC = () => {
-  const { user, bookings, isLoading } = useAuth();
-
-  if (isLoading) {
-    return (
-      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
-        <div className="text-center">
-          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto mb-4"></div>
-          <p className="text-gray-600">Loading your dashboard...</p>
-        </div>
-      </div>
-    );
-  }
+  const { user, bookings } = useAuth();
 
   const getStatusIcon = (status: string) => {
     switch (status) {
@@ -60,7 +49,12 @@ const Dashboard: React.FC = () => {
         <div className="bg-gradient-to-r from-blue-600 to-purple-600 rounded-2xl p-8 text-white mb-8">
           <div className="flex items-center justify-between">
             <div>
+<<<<<<< HEAD
               <h1 className="text-3xl font-bold mb-2">Welcome back, {user?.name || user?.email}!</h1>
+=======
+              <h1 className="text-3xl font-bold mb-2">Welcome back, {user?.user_metadata?.name || user?.email}!</h1>
+              <h1 className="text-3xl font-bold mb-2">Welcome back, {user?.name}!</h1>
+>>>>>>> 8c9d782b51df86acdf3f79094d50305611f9cc65
               <p className="text-blue-100 text-lg">
                 Ready to explore more colleges? Your VR journey continues here.
               </p>
