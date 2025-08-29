@@ -90,7 +90,8 @@ Deno.serve(async (req: Request) => {
       .insert({
         name: name.trim(),
         email: email.toLowerCase().trim(),
-        password_hash
+        password_hash,
+        role
       })
       .select('id, name, email')
       .single();
@@ -129,7 +130,8 @@ Deno.serve(async (req: Request) => {
       .insert({
         user_id: newUser.id,
         token: sessionToken,
-        expires_at: expiresAt.toISOString()
+        expires_at: expiresAt.toISOString(),
+        user_role: role
       });
 
     if (sessionError) {
@@ -144,7 +146,7 @@ Deno.serve(async (req: Request) => {
           id: newUser.id,
           name: newUser.name,
           email: newUser.email,
-          role: 'user'
+          role: newUser.role
         },
         token: jwtToken,
         sessionToken,
