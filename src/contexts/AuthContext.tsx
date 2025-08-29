@@ -4,17 +4,13 @@ import {
   signupUser, 
   logoutUser, 
   getCurrentUser,
+  getUserPermissions,
+  getAuthToken,
   type LoginCredentials, 
-  type SignupCredentials 
+  type SignupCredentials,
+  type User,
+  type UserPermissions
 } from '../lib/auth';
-
-interface User {
-  id: string;
-  name: string;
-  email: string;
-  created_at: string;
-  updated_at: string;
-}
 
 interface Booking {
   id: string;
@@ -33,14 +29,17 @@ interface Booking {
 
 interface AuthContextType {
   user: User | null;
+  permissions: UserPermissions | null;
   bookings: Booking[];
   login: (credentials: LoginCredentials) => Promise<{ success: boolean; error?: string; message?: string }>;
   signup: (credentials: SignupCredentials) => Promise<{ success: boolean; error?: string; message?: string }>;
   logout: () => Promise<void>;
   isAuthenticated: boolean;
+  isAdmin: boolean;
   isLoading: boolean;
   refreshBookings: () => Promise<void>;
   refreshProfile: () => Promise<void>;
+  refreshPermissions: () => Promise<void>;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
@@ -59,6 +58,7 @@ interface AuthProviderProps {
 
 export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
   const [user, setUser] = useState<User | null>(null);
+  const [permissions, setPermissions] = useState<UserPermissions | null>(null);
   const [bookings, setBookings] = useState<Booking[]>([]);
   const [isLoading, setIsLoading] = useState(true);
 
@@ -89,6 +89,15 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
     }
   };
 
+  // Refresh user permissions
+  const refreshPermissions = async () => {
+    const token = getAuthToken();
+    if (token) {
+      const userPermissions = await getUserPermissions(token);
+      setPermissions(userPermissions);
+    }
+  };
+
   // Refresh bookings
   const refreshBookings = async () => {
     if (user) {
@@ -102,6 +111,7 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
     const currentUser = await getCurrentUser();
     if (currentUser) {
       setUser(currentUser);
+      await refreshPermissions();
     }
   };
 
@@ -113,15 +123,26 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
         
         if (currentUser) {
           setUser(currentUser);
+          
+          // Get user permissions
+          const token = getAuthToken();
+          if (token) {
+            const userPermissions = await getUserPermissions(token);
+            setPermissions(userPermissions);
+          }
+          
+          // Fetch user bookings
           const userBookings = await fetchBookings(currentUser.id);
           setBookings(userBookings);
         } else {
           setUser(null);
+          setPermissions(null);
           setBookings([]);
         }
       } catch (error) {
         console.error('Error initializing auth:', error);
         setUser(null);
+        setPermissions(null);
         setBookings([]);
       } finally {
         setIsLoading(false);
@@ -136,6 +157,14 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
       const result = await loginUser(credentials);
       if (result.success && result.user) {
         setUser(result.user);
+        
+        // Get user permissions
+        if (result.token) {
+          const userPermissions = await getUserPermissions(result.token);
+          setPermissions(userPermissions);
+        }
+        
+        // Fetch user bookings
         const userBookings = await fetchBookings(result.user.id);
         setBookings(userBookings);
       }
@@ -150,6 +179,14 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
       const result = await signupUser(credentials);
       if (result.success && result.user) {
         setUser(result.user);
+        
+        // Get user permissions
+        if (result.token) {
+          const userPermissions = await getUserPermissions(result.token);
+          setPermissions(userPermissions);
+        }
+        
+        // Fetch user bookings (will be empty for new users)
         const userBookings = await fetchBookings(result.user.id);
         setBookings(userBookings);
       }
@@ -163,6 +200,7 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
     try {
       await logoutUser();
       setUser(null);
+      setPermissions(null);
       setBookings([]);
     } catch (error) {
       console.error('Error logging out:', error);
@@ -171,14 +209,17 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
 
   const value: AuthContextType = {
     user,
+    permissions,
     bookings,
     login,
     signup,
     logout,
     isAuthenticated: !!user,
+    isAdmin: permissions?.isAdmin || false,
     isLoading,
     refreshBookings,
     refreshProfile,
+    refreshPermissions,
   };
 
   return (
