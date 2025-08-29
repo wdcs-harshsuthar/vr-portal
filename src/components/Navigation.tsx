@@ -11,11 +11,7 @@ const Navigation: React.FC = () => {
   const isActive = (path: string) => location.pathname === path;
 
   const handleLogout = () => {
-    logout().then(() => {
-      navigate('/');
-    }).catch((error) => {
-      console.error('Logout navigation error:', error);
-    });
+    logout();
     setIsMenuOpen(false);
   };
   return (
