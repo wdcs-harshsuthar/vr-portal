@@ -80,6 +80,8 @@ const BookTour: React.FC = () => {
       console.log('Payment simulation completed');
       
       // Create booking data
+      const bookingData = {
+        date: selectedDate,
         location: selectedLocation,
         time_slot: selectedTimeSlot,
         participants,
@@ -94,11 +96,11 @@ const BookTour: React.FC = () => {
       const bookingResult = await createBooking(bookingData);
       
       if (!bookingResult.success) {
-        console.error('Booking creation failed:', result.error);
+        console.error('Booking creation failed:', bookingResult.error);
         throw new Error(bookingResult.error || 'Failed to create booking');
       }
 
-      console.log('Booking created successfully:', result.booking);
+      console.log('Booking created successfully:', bookingResult.booking);
       
       // Close payment form and show success
       setShowPaymentForm(false);
