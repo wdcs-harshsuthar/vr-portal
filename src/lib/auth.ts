@@ -33,33 +33,71 @@ export interface UserPermissions {
   canViewAllBookings: boolean;
 }
 
-// Hash password function
-const hashPassword = async (password: string): Promise<string> => {
-  const encoder = new TextEncoder();
-  const data = encoder.encode(password);
-  const hashBuffer = await crypto.subtle.digest('SHA-256', data);
-  const hashArray = Array.from(new Uint8Array(hashBuffer));
-  return hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
+// Token management
+const TOKEN_KEY = 'auth_token';
+const USER_KEY = 'auth_user';
+
+const setAuthToken = (token: string) => {
+  localStorage.setItem(TOKEN_KEY, token);
+};
+
+const getAuthToken = (): string | null => {
+  return localStorage.getItem(TOKEN_KEY);
+};
+
+const setUserData = (user: User) => {
+  localStorage.setItem(USER_KEY, JSON.stringify(user));
+};
+
+const getUserData = (): User | null => {
+  const userData = localStorage.getItem(USER_KEY);
+  return userData ? JSON.parse(userData) : null;
+};
+
+const clearAuthData = () => {
+  localStorage.removeItem(TOKEN_KEY);
+  localStorage.removeItem(USER_KEY);
 };
 
 export const getCurrentUser = async (): Promise<User | null> => {
   try {
-    const { data: { user: authUser }, error } = await supabase.auth.getUser();
-    
-    if (error || !authUser) {
+    const token = getAuthToken();
+    if (!token) {
       return null;
     }
 
-    return {
-      id: authUser.id,
-      name: authUser.user_metadata?.name || authUser.email?.split('@')[0] || 'User',
-      email: authUser.email || '',
-      role: 'user',
-      created_at: authUser.created_at,
-      updated_at: authUser.updated_at
-    };
+    // First try to get user from localStorage
+    const cachedUser = getUserData();
+    if (cachedUser) {
+      return cachedUser;
+    }
+
+    // If no cached user, verify token with backend
+    const response = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/auth-verify`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY}`,
+      },
+      body: JSON.stringify({ token }),
+    });
+
+    if (!response.ok) {
+      clearAuthData();
+      return null;
+    }
+
+    const data = await response.json();
+    if (data.success && data.user) {
+      setUserData(data.user);
+      return data.user;
+    }
+
+    clearAuthData();
+    return null;
   } catch (error) {
     console.error('Error getting current user:', error);
+    clearAuthData();
     return null;
   }
 };
@@ -82,34 +120,32 @@ export const getUserPermissions = async (): Promise<UserPermissions | null> => {
 
 export const signupUser = async (credentials: SignupCredentials): Promise<AuthResponse> => {
   try {
-    const { data, error } = await supabase.auth.signUp({
-      email: credentials.email,
-      password: credentials.password,
-      options: {
-        data: {
-          name: credentials.name,
-        }
-      }
+    const response = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/auth-signup`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY}`,
+      },
+      body: JSON.stringify(credentials),
     });
 
-    if (error) {
-      return { success: false, error: error.message };
+    const data = await response.json();
+
+    if (!response.ok) {
+      return { success: false, error: data.error || 'Signup failed' };
     }
 
-    if (!data.user) {
-      return { success: false, error: 'Failed to create account' };
+    if (data.success && data.user && data.token) {
+      setAuthToken(data.token);
+      setUserData(data.user);
+      return {
+        success: true,
+        user: data.user,
+        message: 'Account created successfully'
+      };
     }
 
-    return {
-      success: true,
-      user: {
-        id: data.user.id,
-        name: credentials.name,
-        email: credentials.email,
-        role: 'user'
-      },
-      message: 'Account created successfully'
-    };
+    return { success: false, error: data.error || 'Signup failed' };
   } catch (error) {
     console.error('Signup error:', error);
     return { success: false, error: 'Network error. Please try again.' };
@@ -118,28 +154,31 @@ export const signupUser = async (credentials: SignupCredentials): Promise<AuthRe
 
 export const loginUser = async (credentials: LoginCredentials): Promise<AuthResponse> => {
   try {
-    const { data, error } = await supabase.auth.signInWithPassword({
-      email: credentials.email,
-      password: credentials.password
+    const response = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/auth-login`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY}`,
+      },
+      body: JSON.stringify(credentials),
     });
 
-    if (error) {
-      return { success: false, error: error.message };
+    const data = await response.json();
+
+    if (!response.ok) {
+      return { success: false, error: data.error || 'Login failed' };
     }
 
-    if (!data.user) {
-      return { success: false, error: 'Login failed' };
+    if (data.success && data.user && data.token) {
+      setAuthToken(data.token);
+      setUserData(data.user);
+      return {
+        success: true,
+        user: data.user
+      };
     }
 
-    return {
-      success: true,
-      user: {
-        id: data.user.id,
-        name: data.user.user_metadata?.name || data.user.email?.split('@')[0] || 'User',
-        email: data.user.email || '',
-        role: 'user'
-      }
-    };
+    return { success: false, error: data.error || 'Login failed' };
   } catch (error) {
     console.error('Login error:', error);
     return { success: false, error: 'Network error. Please try again.' };
@@ -148,15 +187,29 @@ export const loginUser = async (credentials: LoginCredentials): Promise<AuthResp
 
 export const logoutUser = async (): Promise<void> => {
   try {
-    await supabase.auth.signOut();
+    const token = getAuthToken();
+    
+    if (token) {
+      await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/auth-logout`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY}`,
+        },
+        body: JSON.stringify({ token }),
+      });
+    }
   } catch (error) {
     console.error('Logout error:', error);
+  } finally {
+    // Always clear local auth data
+    clearAuthData();
   }
 };
 
 // Admin functions - simplified for now
 export const getAllUsers = async (page = 1, limit = 10) => {
-  // Return mock data for now since we're using Supabase Auth
+  // Return mock data for now since we're using custom auth
   return {
     users: [],
     pagination: {

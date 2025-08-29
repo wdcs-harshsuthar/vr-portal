@@ -1,12 +1,6 @@
 import React, { createContext, useContext, useState, useEffect, ReactNode } from 'react';
 import { supabase } from '../lib/supabase';
-
-interface User {
-  id: string;
-  name: string;
-  email: string;
-  role: 'user' | 'admin';
-}
+import { loginUser, signupUser, logoutUser, getCurrentUser, User } from '../lib/auth';
 
 interface AuthContextType {
   user: User | null;
@@ -37,49 +31,27 @@ interface AuthProviderProps {
 export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
   const [user, setUser] = useState<User | null>(null);
   const [bookings, setBookings] = useState<any[]>([]);
-  const [isLoading, setIsLoading] = useState(false);
+  const [isLoading, setIsLoading] = useState(true);
 
   // Check for existing session on mount
   useEffect(() => {
     const checkSession = async () => {
       try {
-        const { data: { session } } = await supabase.auth.getSession();
+        setIsLoading(true);
+        const currentUser = await getCurrentUser();
         
-        if (session?.user) {
-          const userData: User = {
-            id: session.user.id,
-            name: session.user.user_metadata?.name || session.user.email?.split('@')[0] || 'User',
-            email: session.user.email || '',
-            role: 'user'
-          };
-          setUser(userData);
-          await loadUserBookings(userData.id);
+        if (currentUser) {
+          setUser(currentUser);
+          await loadUserBookings(currentUser.id);
         }
       } catch (error) {
         console.error('Session check error:', error);
+      } finally {
+        setIsLoading(false);
       }
     };
 
     checkSession();
-
-    // Listen for auth changes
-    const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
-      if (event === 'SIGNED_IN' && session?.user) {
-        const userData: User = {
-          id: session.user.id,
-          name: session.user.user_metadata?.name || session.user.email?.split('@')[0] || 'User',
-          email: session.user.email || '',
-          role: 'user'
-        };
-        setUser(userData);
-        await loadUserBookings(userData.id);
-      } else if (event === 'SIGNED_OUT') {
-        setUser(null);
-        setBookings([]);
-      }
-    });
-
-    return () => subscription.unsubscribe();
   }, []);
 
   const loadUserBookings = async (userId: string) => {
@@ -100,59 +72,62 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
 
   const login = async (email: string, password: string) => {
     try {
-      const { data, error } = await supabase.auth.signInWithPassword({
-        email,
-        password
-      });
+      setIsLoading(true);
+      const result = await loginUser({ email, password });
 
-      if (error) {
-        return { success: false, error: error.message };
+      if (result.success && result.user) {
+        setUser(result.user);
+        await loadUserBookings(result.user.id);
+        return { success: true };
       }
 
-      return { success: true };
+      return { success: false, error: result.error };
     } catch (error) {
       return { success: false, error: 'Login failed' };
+    } finally {
+      setIsLoading(false);
     }
   };
 
   const signup = async (email: string, password: string, name: string) => {
     try {
-      const { data, error } = await supabase.auth.signUp({
-        email,
-        password,
-        options: {
-          data: {
-            name: name
-          }
-        }
-      });
+      setIsLoading(true);
+      const result = await signupUser({ email, password, name });
 
-      if (error) {
-        return { success: false, error: error.message };
+      if (result.success && result.user) {
+        setUser(result.user);
+        return { success: true };
       }
 
-      return { success: true };
+      return { success: false, error: result.error };
     } catch (error) {
       return { success: false, error: 'Signup failed' };
+    } finally {
+      setIsLoading(false);
     }
   };
 
   const logout = async () => {
     try {
-     // Clear user state immediately
-     setUser(null);
-     setBookings([]);
-     
-      await supabase.auth.signOut();
-     
-     // Force redirect to login page
-     window.location.href = '/login';
+      console.log('Starting logout process...');
+      
+      // Clear user state immediately
+      setUser(null);
+      setBookings([]);
+      
+      // Call logout function to clear server-side session
+      await logoutUser();
+      
+      console.log('Logout completed, redirecting to login...');
+      
+      // Force redirect to login page
+      window.location.href = '/login';
     } catch (error) {
       console.error('Logout error:', error);
-     // Even if logout fails, clear local state and redirect
-     setUser(null);
-     setBookings([]);
-     window.location.href = '/login';
+      // Even if logout fails, clear local state and redirect
+      setUser(null);
+      setBookings([]);
+      window.location.href = '/login';
     }
   };
 
@@ -169,7 +144,7 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
     signup,
     logout,
     isAuthenticated: !!user,
-    isAdmin: false,
+    isAdmin: user?.role === 'admin',
     isLoading,
     refreshBookings,
   };
