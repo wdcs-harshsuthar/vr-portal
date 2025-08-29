@@ -27,6 +27,21 @@ export interface Booking {
 
 export const createBooking = async (bookingData: CreateBookingData): Promise<{ success: boolean; booking?: Booking; error?: string }> => {
   try {
+    // Check if user already has a booking for the same date and time
+    const { data: existingBooking } = await supabase
+      .from('bookings')
+      .select('id')
+      .eq('user_id', bookingData.user_id)
+      .eq('date', bookingData.date)
+      .eq('time_slot', bookingData.time_slot)
+      .eq('location', bookingData.location)
+      .single();
+
+    if (existingBooking) {
+      return { success: false, error: 'You already have a booking for this date and time' };
+    }
+
+    // Create the booking
     const { data, error } = await supabase
       .from('bookings')
       .insert([bookingData])
@@ -88,13 +103,7 @@ export const getAllBookings = async (): Promise<{ success: boolean; bookings?: B
   try {
     const { data, error } = await supabase
       .from('bookings')
-      .select(`
-        *,
-        users (
-          name,
-          email
-        )
-      `)
+      .select('*')
       .order('created_at', { ascending: false });
 
     if (error) {

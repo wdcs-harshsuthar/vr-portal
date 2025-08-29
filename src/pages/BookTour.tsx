@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
+import { createBooking } from '../lib/bookings';
 import Calendar from '../components/Calendar';
 import { MapPin, Clock, Users, DollarSign, Calendar as CalendarIcon, CheckCircle } from 'lucide-react';
 
@@ -62,20 +63,7 @@ const BookTour: React.FC = () => {
         status: 'pending'
       };
 
-      const response = await fetch('/api/bookings', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${localStorage.getItem('supabase.auth.token')}`
-        },
-        body: JSON.stringify(bookingData)
-      });
-
-      if (!response.ok) {
-        throw new Error('Failed to create booking');
-      }
-
-      const result = await response.json();
+      const result = await createBooking(bookingData);
       
       if (result.success) {
         setSuccess(true);
