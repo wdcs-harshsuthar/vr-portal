@@ -1,4 +1,5 @@
 import React, { createContext, useContext, useState, useEffect, ReactNode } from 'react';
+import { supabase } from '../lib/supabase';
 import { 
   loginUser, 
   signupUser, 
@@ -65,7 +66,7 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
   // Fetch user bookings
   const fetchBookings = async (userId: string) => {
     try {
-      const { data, error } = await import('../lib/supabase').then(m => m.supabase)
+      const { data, error } = await supabase
         .from('bookings')
         .select('*')
         .eq('user_id', userId)
