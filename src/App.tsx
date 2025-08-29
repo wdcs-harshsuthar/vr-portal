@@ -8,11 +8,17 @@ import Home from './pages/Home';
 import Login from './pages/Login';
 import Signup from './pages/Signup';
 import Dashboard from './pages/Dashboard';
+<<<<<<< HEAD
 import BookTour from './pages/BookTour';
 import BrowseColleges from './pages/BrowseColleges';
 import AdminDashboard from './pages/AdminDashboard';
 import PrivacyPolicy from './pages/PrivacyPolicy';
 import ContactSupport from './pages/ContactSupport';
+=======
+import AdminDashboard from './pages/AdminDashboard';
+import BookTour from './pages/BookTour';
+import AdminRoute from './components/AdminRoute';
+>>>>>>> 8c9d782b51df86acdf3f79094d50305611f9cc65
 
 function App() {
   return (
@@ -43,12 +49,22 @@ function App() {
                   </ProtectedRoute>
                 } 
               />
+<<<<<<< HEAD
               <Route path="/browse-colleges" element={<BrowseColleges />} />
               
               {/* Admin Routes */}
               <Route 
                 path="/admin/dashboard" 
                 element={<AdminDashboard />} 
+=======
+              <Route 
+                path="/admin" 
+                element={
+                  <AdminRoute>
+                    <AdminDashboard />
+                  </AdminRoute>
+                } 
+>>>>>>> 8c9d782b51df86acdf3f79094d50305611f9cc65
               />
             </Routes>
           </main>
