@@ -13,100 +13,125 @@ export interface User {
   id: string;
   name: string;
   email: string;
+  role: string;
   created_at: string;
 }
 
-const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL;
-
-if (!SUPABASE_URL) {
-  throw new Error('VITE_SUPABASE_URL environment variable is not set');
-}
+const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:3001/api';
 
 export const getCurrentUser = async (): Promise<User | null> => {
-  const sessionToken = localStorage.getItem('sessionToken');
-  const userData = localStorage.getItem('user');
+  const token = localStorage.getItem('token');
   
-  if (!sessionToken || !userData) {
+  if (!token) {
     return null;
   }
   
   try {
-    return JSON.parse(userData);
+    const response = await fetch(`${API_URL}/auth/profile`, {
+      headers: {
+        'Authorization': `Bearer ${token}`,
+        'Content-Type': 'application/json',
+      },
+    });
+
+    if (!response.ok) {
+      localStorage.removeItem('token');
+      return null;
+    }
+
+    const data = await response.json();
+    return data.user;
   } catch (error) {
-    console.error('Error parsing user data:', error);
-    localStorage.removeItem('sessionToken');
-    localStorage.removeItem('user');
+    console.error('Error getting current user:', error);
+    localStorage.removeItem('token');
     return null;
   }
 };
 
-export const signupUser = async (name: string, email: string, password: string) => {
-  const response = await fetch(`${SUPABASE_URL}/functions/v1/auth-signup`, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      'Authorization': `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY}`,
-    },
-    body: JSON.stringify({ 
-      name: credentials.name, 
-      email: credentials.email, 
-      password: credentials.password 
-    }),
-  });
-
-  const data = await response.json();
-
-  if (!response.ok) {
-    throw new Error(data.error || 'Signup failed');
-  }
-
-  // Store user data and session token
-  localStorage.setItem('sessionToken', data.sessionToken);
-  localStorage.setItem('user', JSON.stringify(data.user));
-
-  return data;
-};
-
-export const loginUser = async (email: string, password: string) => {
-  const response = await fetch(`${SUPABASE_URL}/functions/v1/auth-login`, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      'Authorization': `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY}`,
-    },
-    body: JSON.stringify({ email, password }),
-  });
-
-  const data = await response.json();
-
-  if (!response.ok) {
-    throw new Error(data.error || 'Login failed');
-  }
-
-  // Store user data and session token
-  localStorage.setItem('sessionToken', data.sessionToken);
-  localStorage.setItem('user', JSON.stringify(data.user));
-
-  return data;
-};
-
-export const logoutUser = async () => {
-  const sessionToken = localStorage.getItem('sessionToken');
-  if (!sessionToken) return;
-
+export const signupUser = async (
+  credentials: SignupCredentials
+): Promise<{ success: boolean; user?: User; message?: string; error?: string }> => {
   try {
-    await fetch(`${SUPABASE_URL}/functions/v1/auth-logout`, {
+    const response = await fetch(`${API_URL}/auth/signup`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        'Authorization': `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY}`,
       },
-      body: JSON.stringify({ sessionToken }),
+      body: JSON.stringify(credentials),
     });
+
+    const data = await response.json();
+
+    if (!response.ok) {
+      return { success: false, error: data.error || 'Signup failed' };
+    }
+
+    // Store token and user data
+    localStorage.setItem('token', data.token);
+    localStorage.setItem('user', JSON.stringify(data.user));
+
+    return { success: true, user: data.user, message: data.message };
   } catch (error) {
-    console.error('Logout error:', error);
-  } finally {
-    localStorage.removeItem('sessionToken');
-    localStorage.removeItem('user');
+    console.error('Signup error:', error);
+    return { success: false, error: 'Network error occurred' };
   }
+};
+
+export const loginUser = async (
+  credentials: LoginCredentials
+): Promise<{ success: boolean; user?: User; message?: string; error?: string }> => {
+  try {
+    const response = await fetch(`${API_URL}/auth/login`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify(credentials),
+    });
+
+    const data = await response.json();
+
+    if (!response.ok) {
+      return { success: false, error: data.error || 'Login failed' };
+    }
+
+    // Store token and user data
+    localStorage.setItem('token', data.token);
+    localStorage.setItem('user', JSON.stringify(data.user));
+
+    // If user is admin, also store admin tokens
+    if (data.user.role === 'admin') {
+      localStorage.setItem('adminToken', data.token);
+      localStorage.setItem('adminUser', JSON.stringify(data.user));
+    }
+
+    return { success: true, user: data.user, message: data.message };
+  } catch (error) {
+    console.error('Login error:', error);
+    return { success: false, error: 'Network error occurred' };
+  }
+};
+
+export const logoutUser = async () => {
+  const token = localStorage.getItem('token');
+  
+  if (token) {
+    try {
+      await fetch(`${API_URL}/auth/logout`, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json',
+        },
+      });
+    } catch (error) {
+      console.error('Logout error:', error);
+    }
+  }
+  
+  // Clear local storage (including admin tokens)
+  localStorage.removeItem('token');
+  localStorage.removeItem('user');
+  localStorage.removeItem('adminToken');
+  localStorage.removeItem('adminUser');
 };

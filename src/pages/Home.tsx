@@ -29,6 +29,13 @@ const Home: React.FC = () => {
                   Book Your Tour
                   <ArrowRight className="ml-2 h-5 w-5" />
                 </Link>
+                <Link
+                  to="/browse-colleges"
+                  className="inline-flex items-center px-8 py-4 bg-white/10 backdrop-blur-sm text-white font-semibold rounded-xl hover:bg-white/20 transition-all duration-200 border border-white/20"
+                >
+                  Browse Colleges
+                  <ArrowRight className="ml-2 h-5 w-5" />
+                </Link>
                 <button className="inline-flex items-center px-8 py-4 border-2 border-white/30 text-white font-semibold rounded-xl hover:bg-white/10 transition-all duration-200">
                   <Play className="mr-2 h-5 w-5" />
                   Watch Demo
@@ -201,20 +208,22 @@ const Home: React.FC = () => {
             </div>
           </div>
 
-          {/* CTA Section */}
+          {/* Book VR Tour Section */}
           <div className="mt-16 text-center">
-            <div className="bg-gradient-to-r from-blue-600 to-purple-600 rounded-2xl p-8 text-white">
-              <h3 className="text-2xl font-bold mb-4">Ready to Start Your Journey?</h3>
-              <p className="text-xl text-blue-100 mb-6">
-                Join thousands of students who've already discovered their dream colleges through VR.
+            <div className="bg-gradient-to-r from-green-600 to-teal-600 rounded-2xl p-8 text-white">
+              <h3 className="text-2xl font-bold mb-4">Ready to Experience VR College Tours?</h3>
+              <p className="text-xl text-green-100 mb-6">
+                Book your virtual reality college tour and explore campuses from anywhere in the world.
               </p>
-              <Link
-                to="/book-tour"
-                className="inline-flex items-center px-8 py-4 bg-white text-blue-600 font-semibold rounded-xl hover:bg-gray-50 transform hover:scale-105 transition-all duration-200 shadow-lg"
-              >
-                Book Your Tour Today
-                <ArrowRight className="ml-2 h-5 w-5" />
-              </Link>
+              <div className="flex justify-center">
+                <Link
+                  to="/book-tour"
+                  className="inline-flex items-center px-8 py-4 bg-white text-green-600 font-semibold rounded-xl hover:bg-gray-50 transform hover:scale-105 transition-all duration-200 shadow-lg"
+                >
+                  Book VR Tour
+                  <ArrowRight className="ml-2 h-5 w-5" />
+                </Link>
+              </div>
             </div>
           </div>
         </div>

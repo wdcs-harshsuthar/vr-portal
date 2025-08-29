@@ -12,8 +12,8 @@ interface User {
   id: string;
   name: string;
   email: string;
+  role: string;
   created_at: string;
-  updated_at: string;
 }
 
 interface Booking {
@@ -62,22 +62,28 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
   const [bookings, setBookings] = useState<Booking[]>([]);
   const [isLoading, setIsLoading] = useState(true);
 
-  // Fetch user bookings
+  // Fetch user bookings from the new API
   const fetchBookings = async (userId: string) => {
     try {
-      const { data, error } = await import('../lib/supabase').then(m => m.supabase)
-        .from('bookings')
-        .select('*')
-        .eq('user_id', userId)
-        .order('created_at', { ascending: false });
+      const token = localStorage.getItem('token');
+      if (!token) return [];
 
-      if (error) {
-        console.error('Error fetching bookings:', error);
+      const response = await fetch(`${import.meta.env.VITE_API_URL || 'http://localhost:3001/api'}/bookings`, {
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json',
+        },
+      });
+
+      if (!response.ok) {
+        console.error('Error fetching bookings:', response.statusText);
         return [];
       }
 
+      const data = await response.json();
+      
       // Transform time_slot to timeSlot for consistency
-      const transformedData = (data || []).map(booking => ({
+      const transformedData = (data.bookings || []).map((booking: any) => ({
         ...booking,
         timeSlot: booking.time_slot
       }));

@@ -1,4 +1,5 @@
 import React from 'react';
+import { Link } from 'react-router-dom';
 import { Eye, Mail, Phone, MapPin, Facebook, Twitter, Instagram, Linkedin } from 'lucide-react';
 
 const Footer: React.FC = () => {
@@ -61,12 +62,11 @@ const Footer: React.FC = () => {
           <div>
             <h3 className="text-lg font-semibold mb-4">Quick Links</h3>
             <div className="space-y-2">
-              <a href="#" className="block text-gray-400 hover:text-white transition-colors">About Us</a>
-              <a href="#" className="block text-gray-400 hover:text-white transition-colors">Our Services</a>
-              <a href="#" className="block text-gray-400 hover:text-white transition-colors">Book a Tour</a>
-              <a href="#" className="block text-gray-400 hover:text-white transition-colors">FAQ</a>
-              <a href="#" className="block text-gray-400 hover:text-white transition-colors">Contact</a>
-              <a href="#" className="block text-gray-400 hover:text-white transition-colors">Privacy Policy</a>
+              <a href="#about" className="block text-gray-400 hover:text-white transition-colors">About Us</a>
+              <Link to="/book-tour" className="block text-gray-400 hover:text-white transition-colors">Book a Tour</Link>
+              <Link to="/browse-colleges" className="block text-gray-400 hover:text-white transition-colors">Browse Colleges</Link>
+              <Link to="/contact-support" className="block text-gray-400 hover:text-white transition-colors">Contact Support</Link>
+              <Link to="/privacy-policy" className="block text-gray-400 hover:text-white transition-colors">Privacy Policy</Link>
             </div>
           </div>
         </div>
