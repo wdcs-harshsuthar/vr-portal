@@ -8,7 +8,9 @@ import Home from './pages/Home';
 import Login from './pages/Login';
 import Signup from './pages/Signup';
 import Dashboard from './pages/Dashboard';
+import AdminDashboard from './pages/AdminDashboard';
 import BookTour from './pages/SignUp';
+import AdminRoute from './components/AdminRoute';
 
 function App() {
   return (
@@ -35,6 +37,14 @@ function App() {
                   <ProtectedRoute>
                     <BookTour />
                   </ProtectedRoute>
+                } 
+              />
+              <Route 
+                path="/admin" 
+                element={
+                  <AdminRoute>
+                    <AdminDashboard />
+                  </AdminRoute>
                 } 
               />
             </Routes>

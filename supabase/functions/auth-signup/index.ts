@@ -1,4 +1,5 @@
 import { createClient } from 'npm:@supabase/supabase-js@2';
+import { sign } from 'npm:jsonwebtoken@9.0.2';
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -10,7 +11,10 @@ interface SignupRequest {
   name: string;
   email: string;
   password: string;
+  role?: 'user' | 'admin';
 }
+
+const JWT_SECRET = Deno.env.get('JWT_SECRET') || 'your-super-secret-jwt-key-change-in-production';
 
 Deno.serve(async (req: Request) => {
   if (req.method === 'OPTIONS') {
@@ -23,7 +27,38 @@ Deno.serve(async (req: Request) => {
       Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? ''
     );
 
-    const { name, email, password }: SignupRequest = await req.json();
+    const { name, email, password, role = 'user' }: SignupRequest = await req.json();
+
+    // Validation
+    if (!name || !email || !password) {
+      return new Response(
+        JSON.stringify({ error: 'Name, email, and password are required' }),
+        { 
+          status: 400, 
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
+        }
+      );
+    }
+
+    if (password.length < 6) {
+      return new Response(
+        JSON.stringify({ error: 'Password must be at least 6 characters long' }),
+        { 
+          status: 400, 
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
+        }
+      );
+    }
+
+    if (!['user', 'admin'].includes(role)) {
+      return new Response(
+        JSON.stringify({ error: 'Invalid role. Must be either "user" or "admin"' }),
+        { 
+          status: 400, 
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
+        }
+      );
+    }
 
     // Check if user already exists
     const { data: existingUser } = await supabase
@@ -53,16 +88,38 @@ Deno.serve(async (req: Request) => {
     const { data: newUser, error: userError } = await supabase
       .from('users')
       .insert({
-        name,
-        email,
-        password_hash
+        name: name.trim(),
+        email: email.toLowerCase().trim(),
+        password_hash,
+        role,
+        is_active: true
       })
-      .select()
+      .select('id, name, email, role, is_active')
       .single();
 
     if (userError) {
+      if (userError.code === '23505') { // Unique constraint violation
+        return new Response(
+          JSON.stringify({ error: 'User already exists with this email' }),
+          { 
+            status: 400, 
+            headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
+          }
+        );
+      }
       throw userError;
     }
+
+    // Create JWT token
+    const tokenPayload = {
+      userId: newUser.id,
+      email: newUser.email,
+      role: newUser.role,
+      iat: Math.floor(Date.now() / 1000),
+      exp: Math.floor(Date.now() / 1000) + (7 * 24 * 60 * 60) // 7 days
+    };
+
+    const jwtToken = sign(tokenPayload, JWT_SECRET);
 
     // Create session
     const sessionToken = crypto.randomUUID();
@@ -73,7 +130,8 @@ Deno.serve(async (req: Request) => {
       .from('user_sessions')
       .insert({
         user_id: newUser.id,
-        session_token: sessionToken,
+        token: sessionToken,
+        user_role: newUser.role,
         expires_at: expiresAt.toISOString()
       });
 
@@ -83,12 +141,17 @@ Deno.serve(async (req: Request) => {
 
     return new Response(
       JSON.stringify({
+        success: true,
+        message: 'Account created successfully',
         user: {
           id: newUser.id,
           name: newUser.name,
-          email: newUser.email
+          email: newUser.email,
+          role: newUser.role
         },
-        sessionToken
+        token: jwtToken,
+        sessionToken,
+        expiresAt: expiresAt.toISOString()
       }),
       { 
         headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
@@ -96,8 +159,9 @@ Deno.serve(async (req: Request) => {
     );
 
   } catch (error) {
+    console.error('Signup error:', error);
     return new Response(
-      JSON.stringify({ error: error.message }),
+      JSON.stringify({ error: 'Internal server error' }),
       { 
         status: 500, 
         headers: { ...corsHeaders, 'Content-Type': 'application/json' } 

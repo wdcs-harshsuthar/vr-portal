@@ -6,7 +6,7 @@ import { Menu, X, Eye } from 'lucide-react';
 const Navigation: React.FC = () => {
   const [isMenuOpen, setIsMenuOpen] = useState(false);
   const location = useLocation();
-  const { isAuthenticated, user, logout } = useAuth();
+  const { isAuthenticated, user, isAdmin, logout } = useAuth();
 
   const isActive = (path: string) => location.pathname === path;
 
@@ -57,6 +57,18 @@ const Navigation: React.FC = () => {
                 >
                   Dashboard
                 </Link>
+                {isAdmin && (
+                  <Link
+                    to="/admin"
+                    className={`px-3 py-2 rounded-md text-sm font-medium transition-colors ${
+                      isActive('/admin') 
+                        ? 'text-purple-600 bg-purple-50' 
+                        : 'text-gray-700 hover:text-purple-600 hover:bg-gray-50'
+                    }`}
+                  >
+                    Admin
+                  </Link>
+                )}
                 <Link
                   to="/book-tour"
                   className={`px-6 py-2 rounded-lg font-medium transition-all ${
@@ -147,6 +159,19 @@ const Navigation: React.FC = () => {
                   >
                     Dashboard
                   </Link>
+                  {isAdmin && (
+                    <Link
+                      to="/admin"
+                      className={`block px-3 py-2 rounded-md text-base font-medium ${
+                        isActive('/admin') 
+                          ? 'text-purple-600 bg-purple-50' 
+                          : 'text-gray-700 hover:text-purple-600 hover:bg-gray-50'
+                      }`}
+                      onClick={() => setIsMenuOpen(false)}
+                    >
+                      Admin
+                    </Link>
+                  )}
                   <Link
                     to="/book-tour"
                     className="block mx-3 mt-4 px-6 py-3 bg-gradient-to-r from-blue-600 to-purple-600 text-white text-center rounded-lg font-medium hover:from-blue-700 hover:to-purple-700 transition-all"
