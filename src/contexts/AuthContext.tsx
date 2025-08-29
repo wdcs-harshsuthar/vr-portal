@@ -146,8 +146,24 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
   };
 
   const refreshBookings = async () => {
-    if (user) {
-      await loadUserBookings(user.id);
+    if (user?.id) {
+      console.log('Refreshing bookings for user:', user.id);
+      try {
+        const { data, error } = await supabase
+          .from('bookings')
+          .select('*')
+          .eq('user_id', user.id)
+          .order('created_at', { ascending: false });
+
+        if (error) {
+          console.error('Error refreshing bookings:', error);
+        } else {
+          console.log('Bookings refreshed:', data);
+          setBookings(data || []);
+        }
+      } catch (error) {
+        console.error('Error refreshing bookings:', error);
+      }
     }
   };
 
