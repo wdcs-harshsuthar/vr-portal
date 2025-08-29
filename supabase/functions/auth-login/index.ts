@@ -44,15 +44,25 @@ Deno.serve(async (req: Request) => {
     const hashArray = Array.from(new Uint8Array(hashBuffer));
     const password_hash = hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
 
-    // Find user with matching email and password - only use existing columns
+    // Find user with matching email and password - use only existing columns
     const { data: user, error: userError } = await supabase
       .from('users')
-      .select('id, name, email')
+      .select('id, name, email, password_hash')
       .eq('email', email)
-      .eq('password_hash', password_hash)
       .single();
 
     if (userError || !user) {
+      return new Response(
+        JSON.stringify({ error: 'Invalid email or password' }),
+        { 
+          status: 401, 
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
+        }
+      );
+    }
+
+    // Verify password
+    if (user.password_hash !== password_hash) {
       return new Response(
         JSON.stringify({ error: 'Invalid email or password' }),
         { 
@@ -73,7 +83,7 @@ Deno.serve(async (req: Request) => {
 
     const jwtToken = sign(tokenPayload, JWT_SECRET);
 
-    // Create session record - only use existing columns
+    // Create session record - use only existing columns
     const sessionToken = crypto.randomUUID();
     const expiresAt = new Date();
     expiresAt.setDate(expiresAt.getDate() + 7);
@@ -84,7 +94,7 @@ Deno.serve(async (req: Request) => {
       .delete()
       .eq('user_id', user.id);
 
-    // Create new session
+    // Create new session - use only existing columns
     const { error: sessionError } = await supabase
       .from('user_sessions')
       .insert({
@@ -95,7 +105,13 @@ Deno.serve(async (req: Request) => {
 
     if (sessionError) {
       console.error('Session creation error:', sessionError);
-      throw sessionError;
+      return new Response(
+        JSON.stringify({ error: 'Failed to create session' }),
+        { 
+          status: 500, 
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
+        }
+      );
     }
 
     return new Response(
