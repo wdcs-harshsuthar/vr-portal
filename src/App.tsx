@@ -9,7 +9,7 @@ import Login from './pages/Login';
 import Signup from './pages/Signup';
 import Dashboard from './pages/Dashboard';
 import AdminDashboard from './pages/AdminDashboard';
-import BookTour from './pages/SignUp';
+import BookTour from './pages/BookTour';
 import AdminRoute from './components/AdminRoute';
 
 function App() {
