@@ -67,7 +67,7 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
   const fetchBookings = async (userId: string) => {
     try {
       const { data, error } = await supabase
-        .from('bookings')
+        .from('bookings', { schema: 'api' })
         .select('*')
         .eq('user_id', userId)
         .order('created_at', { ascending: false });
