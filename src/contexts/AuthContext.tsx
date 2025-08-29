@@ -6,7 +6,6 @@ import {
   logoutUser, 
   getCurrentUser,
   getUserPermissions,
-  getAuthToken,
   type LoginCredentials, 
   type SignupCredentials,
   type User,
@@ -145,22 +144,39 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
     };
 
     initializeAuth();
+
+    // Listen for auth state changes
+    const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
+      if (event === 'SIGNED_IN' && session?.user) {
+        const userData: User = {
+          id: session.user.id,
+          name: session.user.user_metadata?.name || session.user.email?.split('@')[0] || 'User',
+          email: session.user.email || '',
+          role: 'user',
+          created_at: session.user.created_at,
+          updated_at: session.user.updated_at
+        };
+        
+        setUser(userData);
+        
+        const userPermissions = await getUserPermissions();
+        setPermissions(userPermissions);
+        
+        const userBookings = await fetchBookings(userData.id);
+        setBookings(userBookings);
+      } else if (event === 'SIGNED_OUT') {
+        setUser(null);
+        setPermissions(null);
+        setBookings([]);
+      }
+    });
+
+    return () => subscription.unsubscribe();
   }, []);
 
   const login = async (credentials: LoginCredentials) => {
     try {
       const result = await loginUser(credentials);
-      if (result.success && result.user) {
-        setUser(result.user);
-        
-        // Get user permissions
-        const userPermissions = await getUserPermissions();
-        setPermissions(userPermissions);
-        
-        // Fetch user bookings
-        const userBookings = await fetchBookings(result.user.id);
-        setBookings(userBookings);
-      }
       return result;
     } catch (error) {
       return { success: false, error: 'An unexpected error occurred' };
@@ -170,17 +186,6 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
   const signup = async (credentials: SignupCredentials) => {
     try {
       const result = await signupUser(credentials);
-      if (result.success && result.user) {
-        setUser(result.user);
-        
-        // Get user permissions
-        const userPermissions = await getUserPermissions();
-        setPermissions(userPermissions);
-        
-        // Fetch user bookings (will be empty for new users)
-        const userBookings = await fetchBookings(result.user.id);
-        setBookings(userBookings);
-      }
       return result;
     } catch (error) {
       return { success: false, error: 'An unexpected error occurred' };
@@ -190,9 +195,6 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
   const logout = async () => {
     try {
       await logoutUser();
-      setUser(null);
-      setPermissions(null);
-      setBookings([]);
     } catch (error) {
       console.error('Error logging out:', error);
     }
