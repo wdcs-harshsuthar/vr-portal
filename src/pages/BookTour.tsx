@@ -1,9 +1,8 @@
 import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
-import { createBooking } from '../lib/bookings';
+import { supabase } from '../lib/supabase';
 import Calendar from '../components/Calendar';
-import { loadStripe } from '@stripe/stripe-js';
 import { 
   MapPin, 
   Clock, 
@@ -13,11 +12,9 @@ import {
   CheckCircle, 
   CreditCard,
   X,
-  Smartphone
+  Smartphone,
+  AlertCircle
 } from 'lucide-react';
-
-// Initialize Stripe
-const stripePromise = loadStripe('pk_test_51234567890abcdef'); // Replace with your Stripe publishable key
 
 const BookTour: React.FC = () => {
   const { user, refreshBookings } = useAuth();
@@ -47,8 +44,8 @@ const BookTour: React.FC = () => {
     { value: '16:00-17:30', label: '4:00 PM - 5:30 PM' }
   ];
 
-  const baseCost = 25; // $25 per participant
-  const donationCost = 5; // $5 per donation ticket
+  const baseCost = 25;
+  const donationCost = 5;
   const totalCost = (participants * baseCost) + (donationTickets * donationCost);
 
   const handleBookNow = () => {
@@ -67,21 +64,16 @@ const BookTour: React.FC = () => {
   };
 
   const handlePayment = async () => {
-    if (isLoading || !user) return;
+    if (!user || !selectedDate) return;
     
     setIsLoading(true);
     setError('');
 
     try {
-      console.log('Starting payment process...');
-      
-      // Simulate payment processing (2 seconds)
-      await new Promise(resolve => setTimeout(resolve, 2000));
-      console.log('Payment simulation completed');
-      
-      // Create booking data
+      // Create booking directly with Supabase
       const bookingData = {
-        date: selectedDate,
+        user_id: user.id,
+        date: selectedDate.toISOString().split('T')[0],
         location: selectedLocation,
         time_slot: selectedTimeSlot,
         participants,
@@ -90,30 +82,35 @@ const BookTour: React.FC = () => {
         status: 'confirmed' as const
       };
 
-      console.log('Creating booking with data:', bookingData);
-      
-      // Create the booking
-      const bookingResult = await createBooking(bookingData);
-      
-      if (!bookingResult.success) {
-        console.error('Booking creation failed:', bookingResult.error);
-        throw new Error(bookingResult.error || 'Failed to create booking');
+      console.log('Creating booking:', bookingData);
+
+      const { data, error: bookingError } = await supabase
+        .from('bookings')
+        .insert([bookingData])
+        .select()
+        .single();
+
+      if (bookingError) {
+        console.error('Booking error:', bookingError);
+        throw new Error(bookingError.message);
       }
 
-      console.log('Booking created successfully:', bookingResult.booking);
+      console.log('Booking created successfully:', data);
       
       // Close payment form and show success
       setShowPaymentForm(false);
       setSuccess(true);
+      
+      // Refresh bookings
       await refreshBookings();
       
-      // Redirect to dashboard after 3 seconds
+      // Redirect after 2 seconds
       setTimeout(() => {
         navigate('/dashboard');
-      }, 3000);
+      }, 2000);
 
     } catch (error: any) {
-      console.error('Booking error:', error);
+      console.error('Payment/Booking error:', error);
       setError(error.message || 'Booking failed. Please try again.');
     } finally {
       setIsLoading(false);
@@ -130,7 +127,7 @@ const BookTour: React.FC = () => {
             </div>
             <h2 className="text-2xl font-bold text-gray-900 mb-4">Booking Confirmed!</h2>
             <p className="text-gray-600 mb-6">
-              Your VR college tour has been booked and paid for. You'll receive a confirmation email shortly.
+              Your VR college tour has been booked successfully. You'll receive a confirmation email shortly.
             </p>
             <div className="bg-gray-50 rounded-xl p-4 mb-6">
               <div className="text-sm text-gray-600 space-y-2">
@@ -151,7 +148,7 @@ const BookTour: React.FC = () => {
                   <span className="font-medium">{participants}</span>
                 </div>
                 <div className="flex justify-between font-semibold">
-                  <span>Amount Paid:</span>
+                  <span>Total:</span>
                   <span>${totalCost}</span>
                 </div>
               </div>
@@ -180,6 +177,7 @@ const BookTour: React.FC = () => {
             
             {error && (
               <div className="mb-6 p-4 bg-red-50 border border-red-200 rounded-xl flex items-center">
+                <AlertCircle className="h-5 w-5 text-red-500 mr-3" />
                 <div className="text-red-600 text-sm">{error}</div>
               </div>
             )}
@@ -299,7 +297,7 @@ const BookTour: React.FC = () => {
               {/* Book Now Button */}
               <button
                 onClick={handleBookNow}
-                disabled={!selectedDate || !selectedLocation || !selectedTimeSlot}
+                disabled={!selectedDate || !selectedLocation || !selectedTimeSlot || isLoading}
                 className="w-full bg-gradient-to-r from-blue-600 to-purple-600 text-white font-semibold py-3 px-4 rounded-xl hover:from-blue-700 hover:to-purple-700 focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center"
               >
                 <CalendarIcon className="h-5 w-5 mr-2" />
@@ -354,19 +352,6 @@ const BookTour: React.FC = () => {
                   Refreshments and snacks
                 </li>
               </ul>
-            </div>
-
-            {/* Payment Security Notice */}
-            <div className="mt-6 bg-green-50 border border-green-200 rounded-xl p-4">
-              <div className="flex items-center">
-                <CheckCircle className="h-5 w-5 text-green-600 mr-3" />
-                <div>
-                  <p className="text-sm font-medium text-green-800">Secure Payment</p>
-                  <p className="text-xs text-green-600">
-                    Your payment is processed securely through Stripe
-                  </p>
-                </div>
-              </div>
             </div>
           </div>
         </div>
@@ -426,12 +411,11 @@ const BookTour: React.FC = () => {
                       </label>
                       <input
                         type="text"
-                        defaultValue="4242424242424242"
+                        value="4242 4242 4242 4242"
                         readOnly
-                        className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                        placeholder="4242 4242 4242 4242"
+                        className="w-full px-3 py-2 border border-gray-300 rounded-lg bg-gray-50"
                       />
-                      <p className="text-xs text-gray-500 mt-1">Use test card: 4242424242424242</p>
+                      <p className="text-xs text-gray-500 mt-1">Stripe test card number</p>
                     </div>
                     <div className="grid grid-cols-2 gap-3">
                       <div>
@@ -440,10 +424,9 @@ const BookTour: React.FC = () => {
                         </label>
                         <input
                           type="text"
-                          defaultValue="12/25"
+                          value="12/25"
                           readOnly
-                          className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                          placeholder="MM/YY"
+                          className="w-full px-3 py-2 border border-gray-300 rounded-lg bg-gray-50"
                         />
                       </div>
                       <div>
@@ -452,10 +435,9 @@ const BookTour: React.FC = () => {
                         </label>
                         <input
                           type="text"
-                          defaultValue="123"
+                          value="123"
                           readOnly
-                          className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                          placeholder="123"
+                          className="w-full px-3 py-2 border border-gray-300 rounded-lg bg-gray-50"
                         />
                       </div>
                     </div>
@@ -465,10 +447,9 @@ const BookTour: React.FC = () => {
                       </label>
                       <input
                         type="text"
-                        defaultValue="Test User"
+                        value={user?.name || 'Test User'}
                         readOnly
-                        className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                        placeholder="John Doe"
+                        className="w-full px-3 py-2 border border-gray-300 rounded-lg bg-gray-50"
                       />
                     </div>
                   </div>
@@ -483,12 +464,11 @@ const BookTour: React.FC = () => {
                       </label>
                       <input
                         type="text"
-                        defaultValue="test@upi"
+                        value="test@upi"
                         readOnly
-                        className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                        placeholder="yourname@upi"
+                        className="w-full px-3 py-2 border border-gray-300 rounded-lg bg-gray-50"
                       />
-                      <p className="text-xs text-gray-500 mt-1">Use test UPI: test@upi</p>
+                      <p className="text-xs text-gray-500 mt-1">Test UPI ID for demo</p>
                     </div>
                   </div>
                 )}
@@ -504,6 +484,10 @@ const BookTour: React.FC = () => {
                     <div className="flex justify-between">
                       <span>Location:</span>
                       <span className="font-medium">{locations.find(l => l.value === selectedLocation)?.label}</span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span>Time:</span>
+                      <span className="font-medium">{timeSlots.find(t => t.value === selectedTimeSlot)?.label}</span>
                     </div>
                     <div className="flex justify-between">
                       <span>Participants:</span>
@@ -531,18 +515,18 @@ const BookTour: React.FC = () => {
                   {isLoading ? (
                     <>
                       <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-white mr-2"></div>
-                      Creating Booking...
+                      Processing...
                     </>
                   ) : (
                     <>
                       <CreditCard className="h-5 w-5 mr-2" />
-                      Complete Booking - ${totalCost}
+                      Pay ${totalCost}
                     </>
                   )}
                 </button>
 
                 <p className="text-xs text-gray-500 text-center mt-4">
-                  Test mode - No real payment will be processed.
+                  Test mode - No real payment will be processed
                 </p>
               </div>
             </div>
