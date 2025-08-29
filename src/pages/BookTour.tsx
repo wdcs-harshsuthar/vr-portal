@@ -33,13 +33,6 @@ const BookTour: React.FC = () => {
   const [success, setSuccess] = useState(false);
   const [showPaymentForm, setShowPaymentForm] = useState(false);
   const [paymentMethod, setPaymentMethod] = useState<'card' | 'upi'>('card');
-  const [cardDetails, setCardDetails] = useState({
-    number: '4242424242424242',
-    expiry: '12/25',
-    cvc: '123',
-    name: 'Test User'
-  });
-  const [upiId, setUpiId] = useState('test@upi');
 
   const locations = [
     { value: 'atlanta', label: 'Atlanta, GA', address: '123 Peachtree St, Atlanta, GA 30309' },
@@ -73,22 +66,14 @@ const BookTour: React.FC = () => {
     setShowPaymentForm(true);
   };
 
-  const processPayment = async () => {
+  const handlePayment = async () => {
+    if (isLoading) return; // Prevent multiple clicks
+    
     setIsLoading(true);
     setError('');
 
     try {
-      // Simulate payment processing
-      await new Promise(resolve => setTimeout(resolve, 2000));
-
-      // Simulate payment success (90% success rate for testing)
-      const paymentSuccess = Math.random() > 0.1;
-      
-      if (!paymentSuccess) {
-        throw new Error('Payment failed. Please try again.');
-      }
-
-      // Create booking after successful payment
+      // Create booking directly (simulating successful payment)
       const bookingData = {
         user_id: user!.id,
         date: selectedDate!.toISOString().split('T')[0],
@@ -106,6 +91,8 @@ const BookTour: React.FC = () => {
         throw new Error(bookingResult.error || 'Failed to create booking');
       }
 
+      // Close payment form and show success
+      setShowPaymentForm(false);
       setSuccess(true);
       await refreshBookings();
       
@@ -115,8 +102,8 @@ const BookTour: React.FC = () => {
       }, 3000);
 
     } catch (error: any) {
-      console.error('Payment error:', error);
-      setError(error.message || 'Payment failed. Please try again.');
+      console.error('Booking error:', error);
+      setError(error.message || 'Booking failed. Please try again.');
     } finally {
       setIsLoading(false);
     }
@@ -428,8 +415,8 @@ const BookTour: React.FC = () => {
                       </label>
                       <input
                         type="text"
-                        value={cardDetails.number}
-                        onChange={(e) => setCardDetails({...cardDetails, number: e.target.value})}
+                        defaultValue="4242424242424242"
+                        readOnly
                         className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
                         placeholder="4242 4242 4242 4242"
                       />
@@ -442,8 +429,8 @@ const BookTour: React.FC = () => {
                         </label>
                         <input
                           type="text"
-                          value={cardDetails.expiry}
-                          onChange={(e) => setCardDetails({...cardDetails, expiry: e.target.value})}
+                          defaultValue="12/25"
+                          readOnly
                           className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
                           placeholder="MM/YY"
                         />
@@ -454,8 +441,8 @@ const BookTour: React.FC = () => {
                         </label>
                         <input
                           type="text"
-                          value={cardDetails.cvc}
-                          onChange={(e) => setCardDetails({...cardDetails, cvc: e.target.value})}
+                          defaultValue="123"
+                          readOnly
                           className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
                           placeholder="123"
                         />
@@ -467,8 +454,8 @@ const BookTour: React.FC = () => {
                       </label>
                       <input
                         type="text"
-                        value={cardDetails.name}
-                        onChange={(e) => setCardDetails({...cardDetails, name: e.target.value})}
+                        defaultValue="Test User"
+                        readOnly
                         className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
                         placeholder="John Doe"
                       />
@@ -485,8 +472,8 @@ const BookTour: React.FC = () => {
                       </label>
                       <input
                         type="text"
-                        value={upiId}
-                        onChange={(e) => setUpiId(e.target.value)}
+                        defaultValue="test@upi"
+                        readOnly
                         className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
                         placeholder="yourname@upi"
                       />
@@ -526,25 +513,25 @@ const BookTour: React.FC = () => {
 
                 {/* Payment Button */}
                 <button
-                  onClick={processPayment}
+                  onClick={handlePayment}
                   disabled={isLoading}
                   className="w-full bg-gradient-to-r from-green-600 to-blue-600 text-white font-semibold py-3 px-4 rounded-xl hover:from-green-700 hover:to-blue-700 focus:ring-2 focus:ring-green-500 focus:ring-offset-2 transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center"
                 >
                   {isLoading ? (
                     <>
                       <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-white mr-2"></div>
-                      Processing Payment...
+                      Creating Booking...
                     </>
                   ) : (
                     <>
                       <CreditCard className="h-5 w-5 mr-2" />
-                      Pay ${totalCost}
+                      Complete Booking - ${totalCost}
                     </>
                   )}
                 </button>
 
                 <p className="text-xs text-gray-500 text-center mt-4">
-                  This is a test payment. No real money will be charged.
+                  Test mode - No real payment will be processed.
                 </p>
               </div>
             </div>
