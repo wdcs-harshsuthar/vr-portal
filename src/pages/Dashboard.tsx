@@ -61,7 +61,7 @@ const Dashboard: React.FC = () => {
           <div className="flex items-center justify-between">
             <div>
               <h1 className="text-3xl font-bold mb-2">Welcome back, {user?.user_metadata?.name || user?.email}!</h1>
-              <h1 className="text-3xl font-bold mb-2">Welcome back, {user?.name || user?.email}!</h1>
+              <h1 className="text-3xl font-bold mb-2">Welcome back, {user?.name}!</h1>
               <p className="text-blue-100 text-lg">
                 Ready to explore more colleges? Your VR journey continues here.
               </p>
