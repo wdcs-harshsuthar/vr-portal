@@ -60,7 +60,6 @@ const Dashboard: React.FC = () => {
         <div className="bg-gradient-to-r from-blue-600 to-purple-600 rounded-2xl p-8 text-white mb-8">
           <div className="flex items-center justify-between">
             <div>
-              <h1 className="text-3xl font-bold mb-2">Welcome back, {user?.user_metadata?.name || user?.email}!</h1>
               <h1 className="text-3xl font-bold mb-2">Welcome back, {user?.name || user?.email}!</h1>
               <p className="text-blue-100 text-lg">
                 Ready to explore more colleges? Your VR journey continues here.
@@ -247,15 +246,19 @@ const Dashboard: React.FC = () => {
                   </div>
                 </Link>
                 
-                <button className="block w-full text-left px-4 py-3 bg-gray-50 border border-gray-200 rounded-lg hover:bg-gray-100 transition-colors">
+                <Link
+                  to="/browse-colleges"
+                  className="block w-full text-left px-4 py-3 bg-gradient-to-r from-green-50 to-teal-50 border border-green-200 rounded-lg hover:from-green-100 hover:to-teal-100 transition-colors"
+                >
                   <div className="flex items-center">
-                    <Eye className="h-5 w-5 text-gray-600 mr-3" />
+                    <Eye className="h-5 w-5 text-green-600 mr-3" />
                     <div>
                       <p className="font-medium text-gray-900">Browse Colleges</p>
                       <p className="text-sm text-gray-600">Explore available institutions</p>
                     </div>
                   </div>
-                </button>
+                </Link>
+
               </div>
             </div>
 
