@@ -90,11 +90,9 @@ Deno.serve(async (req: Request) => {
       .insert({
         name: name.trim(),
         email: email.toLowerCase().trim(),
-        password_hash,
-        role,
-        is_active: true
+        password_hash
       })
-      .select('id, name, email, role, is_active')
+      .select('id, name, email')
       .single();
 
     if (userError) {
@@ -114,7 +112,7 @@ Deno.serve(async (req: Request) => {
     const tokenPayload = {
       userId: newUser.id,
       email: newUser.email,
-      role: newUser.role,
+      role: 'user', // Default role since column doesn't exist yet
       iat: Math.floor(Date.now() / 1000),
       exp: Math.floor(Date.now() / 1000) + (7 * 24 * 60 * 60) // 7 days
     };
@@ -131,7 +129,6 @@ Deno.serve(async (req: Request) => {
       .insert({
         user_id: newUser.id,
         token: sessionToken,
-        user_role: newUser.role,
         expires_at: expiresAt.toISOString()
       });
 
@@ -147,7 +144,7 @@ Deno.serve(async (req: Request) => {
           id: newUser.id,
           name: newUser.name,
           email: newUser.email,
-          role: newUser.role
+          role: 'user'
         },
         token: jwtToken,
         sessionToken,
