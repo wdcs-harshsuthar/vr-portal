@@ -1,5 +1,6 @@
 import React, { createContext, useContext, useState, useEffect, ReactNode } from 'react';
 import { supabase } from '../lib/supabase';
+import { getUserBookings, type Booking } from '../lib/bookings';
 import { 
   loginUser, 
   signupUser, 
@@ -13,21 +14,6 @@ import {
 } from '../lib/auth';
 
 interface Booking {
-  id: string;
-  user_id: string;
-  date: string;
-  location: string;
-  time_slot: string;
-  timeSlot?: string;
-  participants: number;
-  donation_tickets: number;
-  total_cost: number;
-  status: 'pending' | 'confirmed' | 'cancelled';
-  created_at: string;
-  updated_at: string;
-}
-
-interface AuthContextType {
   user: User | null;
   permissions: UserPermissions | null;
   bookings: Booking[];
@@ -65,24 +51,8 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
   // Fetch user bookings
   const fetchBookings = async (userId: string) => {
     try {
-      const { data, error } = await supabase
-        .from('bookings')
-        .select('*')
-        .eq('user_id', userId)
-        .order('created_at', { ascending: false });
-
-      if (error) {
-        console.error('Error fetching bookings:', error);
-        return [];
-      }
-
-      // Transform time_slot to timeSlot for consistency
-      const transformedData = (data || []).map(booking => ({
-        ...booking,
-        timeSlot: booking.time_slot
-      }));
-
-      return transformedData;
+      const result = await getUserBookings(userId);
+      return result.success ? result.bookings || [] : [];
     } catch (error) {
       console.error('Error fetching bookings:', error);
       return [];
@@ -98,8 +68,10 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
   // Refresh bookings
   const refreshBookings = async () => {
     if (user) {
-      const userBookings = await fetchBookings(user.id);
-      setBookings(userBookings);
+      const result = await getUserBookings(user.id);
+      if (result.success) {
+        setBookings(result.bookings || []);
+      }
     }
   };
 
