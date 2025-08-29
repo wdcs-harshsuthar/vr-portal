@@ -92,11 +92,8 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
 
   // Refresh user permissions
   const refreshPermissions = async () => {
-    const token = getAuthToken();
-    if (token) {
-      const userPermissions = await getUserPermissions(token);
-      setPermissions(userPermissions);
-    }
+    const userPermissions = await getUserPermissions();
+    setPermissions(userPermissions);
   };
 
   // Refresh bookings
@@ -126,11 +123,8 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
           setUser(currentUser);
           
           // Get user permissions
-          const token = getAuthToken();
-          if (token) {
-            const userPermissions = await getUserPermissions(token);
-            setPermissions(userPermissions);
-          }
+          const userPermissions = await getUserPermissions();
+          setPermissions(userPermissions);
           
           // Fetch user bookings
           const userBookings = await fetchBookings(currentUser.id);
@@ -160,10 +154,8 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
         setUser(result.user);
         
         // Get user permissions
-        if (result.token) {
-          const userPermissions = await getUserPermissions(result.token);
-          setPermissions(userPermissions);
-        }
+        const userPermissions = await getUserPermissions();
+        setPermissions(userPermissions);
         
         // Fetch user bookings
         const userBookings = await fetchBookings(result.user.id);
@@ -182,10 +174,8 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
         setUser(result.user);
         
         // Get user permissions
-        if (result.token) {
-          const userPermissions = await getUserPermissions(result.token);
-          setPermissions(userPermissions);
-        }
+        const userPermissions = await getUserPermissions();
+        setPermissions(userPermissions);
         
         // Fetch user bookings (will be empty for new users)
         const userBookings = await fetchBookings(result.user.id);
