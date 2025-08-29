@@ -139,9 +139,20 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
 
   const logout = async () => {
     try {
+     // Clear user state immediately
+     setUser(null);
+     setBookings([]);
+     
       await supabase.auth.signOut();
+     
+     // Force redirect to login page
+     window.location.href = '/login';
     } catch (error) {
       console.error('Logout error:', error);
+     // Even if logout fails, clear local state and redirect
+     setUser(null);
+     setBookings([]);
+     window.location.href = '/login';
     }
   };
 
