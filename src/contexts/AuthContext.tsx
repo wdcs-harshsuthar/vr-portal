@@ -1,26 +1,16 @@
 import React, { createContext, useContext, useState, useEffect, ReactNode } from 'react';
 import { supabase } from '../lib/supabase';
-import { getUserBookings, type Booking } from '../lib/bookings';
 
 interface User {
   id: string;
   name: string;
   email: string;
   role: 'user' | 'admin';
-  created_at?: string;
-  updated_at?: string;
-}
-
-interface UserPermissions {
-  isAdmin: boolean;
-  canManageUsers: boolean;
-  canViewAllBookings: boolean;
 }
 
 interface AuthContextType {
   user: User | null;
-  permissions: UserPermissions | null;
-  bookings: Booking[];
+  bookings: any[];
   login: (email: string, password: string) => Promise<{ success: boolean; error?: string }>;
   signup: (email: string, password: string, name: string) => Promise<{ success: boolean; error?: string }>;
   logout: () => Promise<void>;
@@ -46,13 +36,12 @@ interface AuthProviderProps {
 
 export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
   const [user, setUser] = useState<User | null>(null);
-  const [permissions, setPermissions] = useState<UserPermissions | null>(null);
-  const [bookings, setBookings] = useState<Booking[]>([]);
-  const [isLoading, setIsLoading] = useState(true);
+  const [bookings, setBookings] = useState<any[]>([]);
+  const [isLoading, setIsLoading] = useState(false);
 
-  // Initialize auth state
+  // Check for existing session on mount
   useEffect(() => {
-    const initializeAuth = async () => {
+    const checkSession = async () => {
       try {
         const { data: { session } } = await supabase.auth.getSession();
         
@@ -63,30 +52,17 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
             email: session.user.email || '',
             role: 'user'
           };
-          
           setUser(userData);
-          setPermissions({
-            isAdmin: false,
-            canManageUsers: false,
-            canViewAllBookings: false
-          });
-
-          // Load bookings
-          const result = await getUserBookings(userData.id);
-          if (result.success) {
-            setBookings(result.bookings || []);
-          }
+          await loadUserBookings(userData.id);
         }
       } catch (error) {
-        console.error('Error initializing auth:', error);
-      } finally {
-        setIsLoading(false);
+        console.error('Session check error:', error);
       }
     };
 
-    initializeAuth();
+    checkSession();
 
-    // Listen for auth state changes
+    // Listen for auth changes
     const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
       if (event === 'SIGNED_IN' && session?.user) {
         const userData: User = {
@@ -95,31 +71,32 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
           email: session.user.email || '',
           role: 'user'
         };
-        
         setUser(userData);
-        setPermissions({
-          isAdmin: false,
-          canManageUsers: false,
-          canViewAllBookings: false
-        });
-
-        // Load bookings
-        const result = await getUserBookings(userData.id);
-        if (result.success) {
-          setBookings(result.bookings || []);
-        }
-        
-        setIsLoading(false);
+        await loadUserBookings(userData.id);
       } else if (event === 'SIGNED_OUT') {
         setUser(null);
-        setPermissions(null);
         setBookings([]);
-        setIsLoading(false);
       }
     });
 
     return () => subscription.unsubscribe();
   }, []);
+
+  const loadUserBookings = async (userId: string) => {
+    try {
+      const { data, error } = await supabase
+        .from('bookings')
+        .select('*')
+        .eq('user_id', userId)
+        .order('created_at', { ascending: false });
+
+      if (!error && data) {
+        setBookings(data);
+      }
+    } catch (error) {
+      console.error('Error loading bookings:', error);
+    }
+  };
 
   const login = async (email: string, password: string) => {
     try {
@@ -170,16 +147,12 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
 
   const refreshBookings = async () => {
     if (user) {
-      const result = await getUserBookings(user.id);
-      if (result.success) {
-        setBookings(result.bookings || []);
-      }
+      await loadUserBookings(user.id);
     }
   };
 
   const value: AuthContextType = {
     user,
-    permissions,
     bookings,
     login,
     signup,
