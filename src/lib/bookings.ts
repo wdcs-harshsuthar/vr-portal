@@ -27,9 +27,21 @@ export interface Booking {
 
 export const createBooking = async (bookingData: CreateBookingData): Promise<{ success: boolean; booking?: Booking; error?: string }> => {
   try {
-    console.log('Creating booking with data:', bookingData);
+    // Check if user already has a booking for the same date and time
+    const { data: existingBooking } = await supabase
+      .from('bookings')
+      .select('id')
+      .eq('user_id', bookingData.user_id)
+      .eq('date', bookingData.date)
+      .eq('time_slot', bookingData.time_slot)
+      .eq('location', bookingData.location)
+      .single();
 
-    // Create the booking directly using Supabase client
+    if (existingBooking) {
+      return { success: false, error: 'You already have a booking for this date and time' };
+    }
+
+    // Create the booking
     const { data, error } = await supabase
       .from('bookings')
       .insert([bookingData])
@@ -37,11 +49,10 @@ export const createBooking = async (bookingData: CreateBookingData): Promise<{ s
       .single();
 
     if (error) {
-      console.error('Supabase error creating booking:', error);
-      return { success: false, error: error.message || 'Failed to create booking' };
+      console.error('Error creating booking:', error);
+      return { success: false, error: 'Failed to create booking' };
     }
 
-    console.log('Booking created successfully:', data);
     return { success: true, booking: data };
   } catch (error) {
     console.error('Error creating booking:', error);
