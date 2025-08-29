@@ -20,16 +20,19 @@ const BookTour: React.FC = () => {
   const { user, refreshBookings } = useAuth();
   const navigate = useNavigate();
   
+  // Form state
   const [selectedDate, setSelectedDate] = useState<Date | null>(null);
   const [selectedLocation, setSelectedLocation] = useState('');
   const [selectedTimeSlot, setSelectedTimeSlot] = useState('');
   const [participants, setParticipants] = useState(1);
   const [donationTickets, setDonationTickets] = useState(0);
-  const [isLoading, setIsLoading] = useState(false);
-  const [error, setError] = useState('');
-  const [success, setSuccess] = useState(false);
+  
+  // UI state
   const [showPaymentForm, setShowPaymentForm] = useState(false);
   const [paymentMethod, setPaymentMethod] = useState<'card' | 'upi'>('card');
+  const [isProcessing, setIsProcessing] = useState(false);
+  const [error, setError] = useState('');
+  const [bookingComplete, setBookingComplete] = useState(false);
 
   const locations = [
     { value: 'atlanta', label: 'Atlanta, GA', address: '123 Peachtree St, Atlanta, GA 30309' },
@@ -48,76 +51,73 @@ const BookTour: React.FC = () => {
   const donationCost = 5;
   const totalCost = (participants * baseCost) + (donationTickets * donationCost);
 
+  const validateForm = () => {
+    if (!selectedDate) return 'Please select a date';
+    if (!selectedLocation) return 'Please select a location';
+    if (!selectedTimeSlot) return 'Please select a time slot';
+    if (!user) return 'You must be logged in';
+    return null;
+  };
+
   const handleBookNow = () => {
-    if (!selectedDate || !selectedLocation || !selectedTimeSlot) {
-      setError('Please fill in all required fields');
+    const validationError = validateForm();
+    if (validationError) {
+      setError(validationError);
       return;
     }
-
-    if (!user) {
-      setError('You must be logged in to book a tour');
-      return;
-    }
-
     setError('');
     setShowPaymentForm(true);
   };
 
-  const handlePayment = async () => {
-    if (!user || !selectedDate) return;
+  const processBooking = () => {
+    if (isProcessing) return; // Prevent double clicks
     
-    setIsLoading(true);
+    setIsProcessing(true);
     setError('');
 
-    try {
-      // Create booking directly with Supabase
-      const bookingData = {
-        user_id: user.id,
-        date: selectedDate.toISOString().split('T')[0],
-        location: selectedLocation,
-        time_slot: selectedTimeSlot,
-        participants,
-        donation_tickets: donationTickets,
-        total_cost: totalCost,
-        status: 'confirmed' as const
-      };
+    // Create booking immediately without complex async flows
+    const bookingData = {
+      user_id: user!.id,
+      date: selectedDate!.toISOString().split('T')[0],
+      location: selectedLocation,
+      time_slot: selectedTimeSlot,
+      participants,
+      donation_tickets: donationTickets,
+      total_cost: totalCost,
+      status: 'confirmed' as const
+    };
 
-      console.log('Creating booking:', bookingData);
-
-      const { data, error: bookingError } = await supabase
-        .from('bookings')
-        .insert([bookingData])
-        .select()
-        .single();
-
-      if (bookingError) {
-        console.error('Booking error:', bookingError);
-        throw new Error(bookingError.message);
-      }
-
-      console.log('Booking created successfully:', data);
-      
-      // Close payment form and show success
-      setShowPaymentForm(false);
-      setSuccess(true);
-      
-      // Refresh bookings
-      await refreshBookings();
-      
-      // Redirect after 2 seconds
-      setTimeout(() => {
-        navigate('/dashboard');
-      }, 2000);
-
-    } catch (error: any) {
-      console.error('Payment/Booking error:', error);
-      setError(error.message || 'Booking failed. Please try again.');
-    } finally {
-      setIsLoading(false);
-    }
+    supabase
+      .from('bookings')
+      .insert([bookingData])
+      .select()
+      .single()
+      .then(({ data, error }) => {
+        if (error) {
+          console.error('Booking error:', error);
+          setError('Failed to create booking. Please try again.');
+          setIsProcessing(false);
+        } else {
+          console.log('Booking created:', data);
+          setShowPaymentForm(false);
+          setBookingComplete(true);
+          refreshBookings();
+          
+          // Redirect after 2 seconds
+          setTimeout(() => {
+            navigate('/dashboard');
+          }, 2000);
+        }
+      })
+      .catch((err) => {
+        console.error('Booking catch error:', err);
+        setError('Network error. Please try again.');
+        setIsProcessing(false);
+      });
   };
 
-  if (success) {
+  // Success screen
+  if (bookingComplete) {
     return (
       <div className="min-h-screen bg-gradient-to-br from-green-50 to-blue-50 flex items-center justify-center py-12 px-4">
         <div className="max-w-md w-full text-center">
@@ -127,7 +127,7 @@ const BookTour: React.FC = () => {
             </div>
             <h2 className="text-2xl font-bold text-gray-900 mb-4">Booking Confirmed!</h2>
             <p className="text-gray-600 mb-6">
-              Your VR college tour has been booked successfully. You'll receive a confirmation email shortly.
+              Your VR college tour has been booked successfully.
             </p>
             <div className="bg-gray-50 rounded-xl p-4 mb-6">
               <div className="text-sm text-gray-600 space-y-2">
@@ -142,10 +142,6 @@ const BookTour: React.FC = () => {
                 <div className="flex justify-between">
                   <span>Time:</span>
                   <span className="font-medium">{timeSlots.find(t => t.value === selectedTimeSlot)?.label}</span>
-                </div>
-                <div className="flex justify-between">
-                  <span>Participants:</span>
-                  <span className="font-medium">{participants}</span>
                 </div>
                 <div className="flex justify-between font-semibold">
                   <span>Total:</span>
@@ -297,7 +293,7 @@ const BookTour: React.FC = () => {
               {/* Book Now Button */}
               <button
                 onClick={handleBookNow}
-                disabled={!selectedDate || !selectedLocation || !selectedTimeSlot || isLoading}
+                disabled={!selectedDate || !selectedLocation || !selectedTimeSlot}
                 className="w-full bg-gradient-to-r from-blue-600 to-purple-600 text-white font-semibold py-3 px-4 rounded-xl hover:from-blue-700 hover:to-purple-700 focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center"
               >
                 <CalendarIcon className="h-5 w-5 mr-2" />
@@ -359,10 +355,10 @@ const BookTour: React.FC = () => {
         {/* Payment Form Modal */}
         {showPaymentForm && (
           <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
-            <div className="bg-white rounded-2xl shadow-2xl max-w-md w-full max-h-[90vh] overflow-y-auto">
+            <div className="bg-white rounded-2xl shadow-2xl max-w-md w-full">
               <div className="p-6">
                 <div className="flex items-center justify-between mb-6">
-                  <h3 className="text-2xl font-bold text-gray-900">Payment Details</h3>
+                  <h3 className="text-2xl font-bold text-gray-900">Complete Payment</h3>
                   <button
                     onClick={() => setShowPaymentForm(false)}
                     className="p-2 hover:bg-gray-100 rounded-lg transition-colors"
@@ -402,26 +398,22 @@ const BookTour: React.FC = () => {
                   </div>
                 </div>
 
-                {/* Card Payment Form */}
+                {/* Payment Forms */}
                 {paymentMethod === 'card' && (
                   <div className="space-y-4 mb-6">
                     <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-2">
-                        Card Number
-                      </label>
+                      <label className="block text-sm font-medium text-gray-700 mb-2">Card Number</label>
                       <input
                         type="text"
                         value="4242 4242 4242 4242"
                         readOnly
                         className="w-full px-3 py-2 border border-gray-300 rounded-lg bg-gray-50"
                       />
-                      <p className="text-xs text-gray-500 mt-1">Stripe test card number</p>
+                      <p className="text-xs text-gray-500 mt-1">Stripe test card</p>
                     </div>
                     <div className="grid grid-cols-2 gap-3">
                       <div>
-                        <label className="block text-sm font-medium text-gray-700 mb-2">
-                          Expiry Date
-                        </label>
+                        <label className="block text-sm font-medium text-gray-700 mb-2">Expiry</label>
                         <input
                           type="text"
                           value="12/25"
@@ -430,9 +422,7 @@ const BookTour: React.FC = () => {
                         />
                       </div>
                       <div>
-                        <label className="block text-sm font-medium text-gray-700 mb-2">
-                          CVC
-                        </label>
+                        <label className="block text-sm font-medium text-gray-700 mb-2">CVC</label>
                         <input
                           type="text"
                           value="123"
@@ -441,34 +431,20 @@ const BookTour: React.FC = () => {
                         />
                       </div>
                     </div>
-                    <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-2">
-                        Cardholder Name
-                      </label>
-                      <input
-                        type="text"
-                        value={user?.name || 'Test User'}
-                        readOnly
-                        className="w-full px-3 py-2 border border-gray-300 rounded-lg bg-gray-50"
-                      />
-                    </div>
                   </div>
                 )}
 
-                {/* UPI Payment Form */}
                 {paymentMethod === 'upi' && (
                   <div className="space-y-4 mb-6">
                     <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-2">
-                        UPI ID
-                      </label>
+                      <label className="block text-sm font-medium text-gray-700 mb-2">UPI ID</label>
                       <input
                         type="text"
                         value="test@upi"
                         readOnly
                         className="w-full px-3 py-2 border border-gray-300 rounded-lg bg-gray-50"
                       />
-                      <p className="text-xs text-gray-500 mt-1">Test UPI ID for demo</p>
+                      <p className="text-xs text-gray-500 mt-1">Test UPI ID</p>
                     </div>
                   </div>
                 )}
@@ -478,7 +454,7 @@ const BookTour: React.FC = () => {
                   <h4 className="font-medium text-gray-900 mb-3">Order Summary</h4>
                   <div className="space-y-2 text-sm">
                     <div className="flex justify-between">
-                      <span>Tour Date:</span>
+                      <span>Date:</span>
                       <span className="font-medium">{selectedDate?.toLocaleDateString()}</span>
                     </div>
                     <div className="flex justify-between">
@@ -494,7 +470,7 @@ const BookTour: React.FC = () => {
                       <span className="font-medium">{participants}</span>
                     </div>
                     <div className="border-t border-gray-200 pt-2 flex justify-between font-semibold text-lg">
-                      <span>Total Amount:</span>
+                      <span>Total:</span>
                       <span>${totalCost}</span>
                     </div>
                   </div>
@@ -508,11 +484,11 @@ const BookTour: React.FC = () => {
 
                 {/* Payment Button */}
                 <button
-                  onClick={handlePayment}
-                  disabled={isLoading}
-                  className="w-full bg-gradient-to-r from-green-600 to-blue-600 text-white font-semibold py-3 px-4 rounded-xl hover:from-green-700 hover:to-blue-700 focus:ring-2 focus:ring-green-500 focus:ring-offset-2 transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center"
+                  onClick={processBooking}
+                  disabled={isProcessing}
+                  className="w-full bg-gradient-to-r from-green-600 to-blue-600 text-white font-semibold py-3 px-4 rounded-xl hover:from-green-700 hover:to-blue-700 transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center"
                 >
-                  {isLoading ? (
+                  {isProcessing ? (
                     <>
                       <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-white mr-2"></div>
                       Processing...
