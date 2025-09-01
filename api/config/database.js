@@ -58,7 +58,20 @@ const initDatabase = async () => {
         participants INTEGER NOT NULL DEFAULT 1,
         donation_tickets INTEGER NOT NULL DEFAULT 0,
         total_cost DECIMAL(10,2) NOT NULL DEFAULT 0.00,
+        college_id INTEGER,
+        college_name VARCHAR(255),
+        is_donor BOOLEAN NOT NULL DEFAULT FALSE,
         status VARCHAR(20) NOT NULL DEFAULT 'pending' CHECK (status IN ('pending', 'confirmed', 'cancelled')),
+        created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+        updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+      );
+      
+      CREATE TABLE IF NOT EXISTS attendees (
+        id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+        booking_id UUID NOT NULL REFERENCES bookings(id) ON DELETE CASCADE,
+        name VARCHAR(255) NOT NULL,
+        grade VARCHAR(100),
+        school VARCHAR(255),
         created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
         updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
       );
@@ -72,6 +85,8 @@ const initDatabase = async () => {
       CREATE INDEX IF NOT EXISTS idx_bookings_user_id ON bookings(user_id);
       CREATE INDEX IF NOT EXISTS idx_bookings_date ON bookings(date);
       CREATE INDEX IF NOT EXISTS idx_bookings_status ON bookings(status);
+      CREATE INDEX IF NOT EXISTS idx_attendees_booking_id ON attendees(booking_id);
+      CREATE INDEX IF NOT EXISTS idx_attendees_name ON attendees(name);
     `);
     
     // Create update trigger function
@@ -93,6 +108,10 @@ const initDatabase = async () => {
       
       DROP TRIGGER IF EXISTS update_bookings_updated_at ON bookings;
       CREATE TRIGGER update_bookings_updated_at BEFORE UPDATE ON bookings
+          FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
+          
+      DROP TRIGGER IF EXISTS update_attendees_updated_at ON attendees;
+      CREATE TRIGGER update_attendees_updated_at BEFORE UPDATE ON attendees
           FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
     `);
     

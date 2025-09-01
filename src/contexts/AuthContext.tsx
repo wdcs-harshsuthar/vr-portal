@@ -29,6 +29,10 @@ interface Booking {
   status: 'pending' | 'confirmed' | 'cancelled';
   created_at: string;
   updated_at: string;
+  college_id?: number;
+  college_name?: string;
+  is_donor?: boolean;
+  attendees?: any[];
 }
 
 interface AuthContextType {
@@ -38,9 +42,11 @@ interface AuthContextType {
   signup: (credentials: SignupCredentials) => Promise<{ success: boolean; error?: string; message?: string }>;
   logout: () => Promise<void>;
   isAuthenticated: boolean;
+  isAdmin: boolean;
   isLoading: boolean;
   refreshBookings: () => Promise<void>;
   refreshProfile: () => Promise<void>;
+  retryAuth: () => Promise<void>;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
@@ -62,27 +68,51 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
   const [bookings, setBookings] = useState<Booking[]>([]);
   const [isLoading, setIsLoading] = useState(true);
 
-  // Fetch user bookings
+  // Fetch user bookings from API
   const fetchBookings = async (userId: string) => {
     try {
-      const { data, error } = await import('../lib/supabase').then(m => m.supabase)
-        .from('bookings')
-        .select('*')
-        .eq('user_id', userId)
-        .order('created_at', { ascending: false });
-
-      if (error) {
-        console.error('Error fetching bookings:', error);
+      const token = localStorage.getItem('token');
+      if (!token) {
+        console.log('No token found, cannot fetch bookings');
         return [];
       }
 
-      // Transform time_slot to timeSlot for consistency
-      const transformedData = (data || []).map(booking => ({
-        ...booking,
-        timeSlot: booking.time_slot
-      }));
+      const response = await fetch(
+        `${import.meta.env.VITE_API_URL || 'http://localhost:3001/api'}/bookings`,
+        {
+          headers: {
+            'Authorization': `Bearer ${token}`,
+            'Content-Type': 'application/json',
+          },
+        }
+      );
 
-      return transformedData;
+      if (response.status === 401) {
+        console.log('Token expired, clearing auth data');
+        localStorage.removeItem('token');
+        localStorage.removeItem('user');
+        setUser(null);
+        setBookings([]);
+        return [];
+      }
+
+      if (!response.ok) {
+        console.error('Failed to fetch bookings:', response.status);
+        return [];
+      }
+
+      const data = await response.json();
+      
+      if (data.success && data.bookings) {
+        // Transform time_slot to timeSlot for consistency
+        const transformedData = data.bookings.map((booking: any) => ({
+          ...booking,
+          timeSlot: booking.time_slot
+        }));
+        return transformedData;
+      }
+
+      return [];
     } catch (error) {
       console.error('Error fetching bookings:', error);
       return [];
@@ -102,6 +132,29 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
     const currentUser = await getCurrentUser();
     if (currentUser) {
       setUser(currentUser);
+    }
+  };
+
+  // Retry authentication
+  const retryAuth = async () => {
+    setIsLoading(true);
+    try {
+      const currentUser = await getCurrentUser();
+      
+      if (currentUser) {
+        setUser(currentUser);
+        const userBookings = await fetchBookings(currentUser.id);
+        setBookings(userBookings);
+      } else {
+        setUser(null);
+        setBookings([]);
+      }
+    } catch (error) {
+      console.error('Error retrying auth:', error);
+      setUser(null);
+      setBookings([]);
+    } finally {
+      setIsLoading(false);
     }
   };
 
@@ -176,9 +229,11 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
     signup,
     logout,
     isAuthenticated: !!user,
+    isAdmin: user?.role === 'admin',
     isLoading,
     refreshBookings,
     refreshProfile,
+    retryAuth,
   };
 
   return (

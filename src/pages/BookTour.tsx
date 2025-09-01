@@ -1,8 +1,7 @@
-<<<<<<< HEAD
 import React, { useState, useEffect } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
-import { Calendar, MapPin, Clock, Users, CreditCard, AlertCircle, CheckCircle, Building, Target, ChevronRight, ChevronLeft, ArrowRight, GraduationCap } from 'lucide-react';
+import { MapPin, Clock, Users, CreditCard, AlertCircle, CheckCircle, Building, Target, ChevronRight, ChevronLeft, ArrowRight, GraduationCap } from 'lucide-react';
 import PaymentModal from '../components/PaymentModal';
 
 interface College {
@@ -15,18 +14,42 @@ interface College {
   image: string;
 }
 
+interface Attendee {
+  name: string;
+  firstName: string;
+  lastName: string;
+  email: string;
+  currentSchool: string;
+  interest: string;
+  gpa: string;
+  emailConsent: boolean;
+  grade?: string;
+  school?: string;
+}
+
 interface BookingData {
   date: string;
   location: string;
   time: string;
   participants: number;
   donationTickets: number;
+  attendees: Attendee[];
+  isDonor: boolean;
+  selectedLocationAddress?: string;
+}
+
+interface SessionData {
+  date: string;
+  location: string;
+  timeSlot: string;
+  currentParticipants: number;
+  maxParticipants: number;
 }
 
 const BookTour: React.FC = () => {
   const navigate = useNavigate();
   const location = useLocation();
-  const { user } = useAuth();
+  const { refreshBookings } = useAuth();
   const [isLoading, setIsLoading] = useState(false);
   const [message, setMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
   const [selectedCollege, setSelectedCollege] = useState<College | null>(null);
@@ -36,12 +59,16 @@ const BookTour: React.FC = () => {
     location: '',
     time: '',
     participants: 1,
-    donationTickets: 0
+    donationTickets: 0,
+    attendees: [],
+    isDonor: false
   });
 
   const [currentMonth, setCurrentMonth] = useState(new Date());
   const [selectedDate, setSelectedDate] = useState<Date | null>(null);
   const [isPaymentModalOpen, setIsPaymentModalOpen] = useState(false);
+  const [sessionData, setSessionData] = useState<SessionData[]>([]);
+  const [loadingSessions, setLoadingSessions] = useState(false);
 
   // Check if college was selected from Browse Colleges
   useEffect(() => {
@@ -51,18 +78,65 @@ const BookTour: React.FC = () => {
     }
   }, [location.state]);
 
+  // Fetch session availability when date or location changes
+  useEffect(() => {
+    if (selectedDate && bookingData.location) {
+      const dateStr = selectedDate.toISOString().split('T')[0];
+      fetchSessionAvailability(dateStr, bookingData.location);
+    }
+  }, [selectedDate, bookingData.location]);
+
+  // Adjust participant count when time slot changes and there aren't enough spots
+  useEffect(() => {
+    if (bookingData.time) {
+      const availableSpots = getAvailableSpots(bookingData.time);
+      if (bookingData.participants > availableSpots && availableSpots > 0) {
+        setBookingData(prev => ({
+          ...prev,
+          participants: availableSpots
+        }));
+      }
+    }
+  }, [bookingData.time, sessionData]);
+
   const locations = [
-    { id: 'atlanta', name: 'Atlanta, GA', subtitle: 'VR Experience Center' },
-    { id: 'detroit', name: 'Detroit, MI', subtitle: 'VR Experience Center' },
-    { id: 'flint', name: 'Flint, MI', subtitle: 'VR Experience Center' }
+    { 
+      id: 'atlanta', 
+      name: 'Atlanta, GA', 
+      subtitle: 'VR Experience Center',
+      address: '123 Peachtree Street, Atlanta, GA 30303'
+    },
+    { 
+      id: 'detroit', 
+      name: 'Detroit, MI', 
+      subtitle: 'VR Experience Center',
+      address: '456 Woodward Avenue, Detroit, MI 48226'
+    },
+    { 
+      id: 'flint', 
+      name: 'Flint, MI', 
+      subtitle: 'VR Experience Center',
+      address: '789 Saginaw Street, Flint, MI 48502'
+    }
   ];
 
+  const interestOptions = [
+    'Four-year colleges (including HBCUs and Ivy League)',
+    'Technical colleges',
+    'Trade schools',
+    'All of the above'
+  ];
+
+  const gpaOptions = Array.from({ length: 31 }, (_, i) => {
+    const gpa = (1.0 + i * 0.1).toFixed(1);
+    return gpa;
+  });
+
   const timeSlots = [
-    '9:00 AM',
-    '10:00 AM',
-    '11:00 AM',
-    '12:00 PM',
-    '1:00 PM'
+    '9:00 AM - 10:15 AM',
+    '10:30 AM - 11:45 AM', 
+    '12:00 PM - 1:15 PM',
+    '1:30 PM - 2:45 PM'
   ];
 
   const donationOptions = [
@@ -101,11 +175,7 @@ const BookTour: React.FC = () => {
     return day === 0 || day === 6; // Sunday = 0, Saturday = 6
   };
 
-  const isPastDate = (date: Date) => {
-    const today = new Date();
-    today.setHours(0, 0, 0, 0);
-    return date < today;
-  };
+
 
   const isDateAvailable = (date: Date) => {
     return date >= new Date() && isWeekend(date);
@@ -122,9 +192,11 @@ const BookTour: React.FC = () => {
   };
 
   const handleLocationSelect = (locationId: string) => {
+    const selectedLocation = locations.find(loc => loc.id === locationId);
     setBookingData(prev => ({
       ...prev,
-      location: locationId
+      location: locationId,
+      selectedLocationAddress: selectedLocation?.address
     }));
   };
 
@@ -136,10 +208,58 @@ const BookTour: React.FC = () => {
   };
 
   const handleParticipantsChange = (participants: number) => {
-    if (participants < 1 || participants > 10) return;
+    const maxAllowed = bookingData.isDonor ? 1000 : 100; // Donors unlimited (practical limit), Parents 100
+    if (participants < 1 || participants > maxAllowed) return;
+    
+    setBookingData(prev => {
+      // Adjust attendees array based on new participant count
+      const newAttendees = [...prev.attendees];
+      
+      if (participants > newAttendees.length) {
+        // Add empty attendees
+        for (let i = newAttendees.length; i < participants; i++) {
+          newAttendees.push({ 
+            name: '', 
+            firstName: '', 
+            lastName: '', 
+            email: '', 
+            currentSchool: '', 
+            interest: '', 
+            gpa: '', 
+            emailConsent: false,
+            grade: '', 
+            school: '' 
+          });
+        }
+      } else {
+        // Remove extra attendees
+        newAttendees.splice(participants);
+      }
+      
+      return {
+        ...prev,
+        participants,
+        attendees: newAttendees
+      };
+    });
+  };
+
+  const handleAttendeeChange = (index: number, field: keyof Attendee, value: string | boolean) => {
     setBookingData(prev => ({
       ...prev,
-      participants
+      attendees: prev.attendees.map((attendee, i) => 
+        i === index ? { ...attendee, [field]: value } : attendee
+      )
+    }));
+  };
+
+  const handleUserTypeChange = (isDonor: boolean) => {
+    setBookingData(prev => ({
+      ...prev,
+      isDonor,
+      // Reset participants if switching to parent mode and exceeding 100
+      participants: isDonor ? prev.participants : Math.min(prev.participants, 100),
+      attendees: isDonor ? prev.attendees : prev.attendees.slice(0, 100)
     }));
   };
 
@@ -165,7 +285,22 @@ const BookTour: React.FC = () => {
   };
 
   const isFormComplete = () => {
-    return bookingData.date && bookingData.location && bookingData.time && bookingData.participants > 0;
+    const basicComplete = bookingData.date && bookingData.location && bookingData.time && bookingData.participants > 0;
+    
+    // For non-donors, require all profile fields for all attendees
+    if (!bookingData.isDonor) {
+      const allProfilesComplete = bookingData.attendees.slice(0, bookingData.participants).every(attendee => 
+        attendee.firstName.trim() && 
+        attendee.lastName.trim() && 
+        attendee.email.trim() && 
+        attendee.currentSchool.trim() && 
+        attendee.interest && 
+        attendee.gpa
+      );
+      return basicComplete && allProfilesComplete;
+    }
+    
+    return basicComplete;
   };
 
   const handleSubmit = async () => {
@@ -200,7 +335,9 @@ const BookTour: React.FC = () => {
         donation_tickets: bookingData.donationTickets,
         total_cost: getTotalCost(),
         college_id: selectedCollege?.id || undefined,
-        college_name: selectedCollege?.name || undefined
+        college_name: selectedCollege?.name || undefined,
+        is_donor: bookingData.isDonor,
+        attendees: bookingData.attendees.slice(0, bookingData.participants)
       };
 
       console.log('Sending booking data:', bookingPayload);
@@ -222,7 +359,29 @@ const BookTour: React.FC = () => {
       console.log('API Response:', { status: response.status, data });
 
       if (response.ok) {
+        // Close payment modal
+        setIsPaymentModalOpen(false);
+        
+        // Show success message
         setMessage({ type: 'success', text: 'VR Tour booked successfully! Redirecting to dashboard...' });
+        
+        // Refresh bookings to include the new one
+        await refreshBookings();
+        
+        // Reset form
+        setBookingData({
+          date: '',
+          location: '',
+          time: '',
+          participants: 1,
+          donationTickets: 0,
+          attendees: [],
+          isDonor: false
+        });
+        setSelectedDate(null);
+        setSelectedCollege(null);
+        
+        // Redirect to dashboard after a short delay
         setTimeout(() => navigate('/dashboard'), 2000);
       } else {
         const errorMessage = data.error || data.details?.[0]?.msg || 'Failed to book VR tour';
@@ -232,133 +391,11 @@ const BookTour: React.FC = () => {
     } catch (error) {
       console.error('Booking error:', error);
       setMessage({ type: 'error', text: 'Network error. Please try again.' });
-=======
-import React, { useState } from 'react';
-import { useNavigate } from 'react-router-dom';
-import { useAuth } from '../contexts/AuthContext';
-import { createBooking } from '../lib/bookings';
-import Calendar from '../components/Calendar';
-import { loadStripe } from '@stripe/stripe-js';
-import { 
-  MapPin, 
-  Clock, 
-  Users, 
-  DollarSign, 
-  Calendar as CalendarIcon, 
-  CheckCircle, 
-  CreditCard,
-  X,
-  Smartphone
-} from 'lucide-react';
-
-// Initialize Stripe
-const stripePromise = loadStripe('pk_test_51234567890abcdef'); // Replace with your Stripe publishable key
-
-const BookTour: React.FC = () => {
-  const { user, refreshBookings } = useAuth();
-  const navigate = useNavigate();
-  
-  const [selectedDate, setSelectedDate] = useState<Date | null>(null);
-  const [selectedLocation, setSelectedLocation] = useState('');
-  const [selectedTimeSlot, setSelectedTimeSlot] = useState('');
-  const [participants, setParticipants] = useState(1);
-  const [donationTickets, setDonationTickets] = useState(0);
-  const [isLoading, setIsLoading] = useState(false);
-  const [error, setError] = useState('');
-  const [success, setSuccess] = useState(false);
-  const [showPaymentForm, setShowPaymentForm] = useState(false);
-  const [paymentMethod, setPaymentMethod] = useState<'card' | 'upi'>('card');
-  const [cardDetails, setCardDetails] = useState({
-    number: '4242424242424242',
-    expiry: '12/25',
-    cvc: '123',
-    name: 'Test User'
-  });
-  const [upiId, setUpiId] = useState('test@upi');
-
-  const locations = [
-    { value: 'atlanta', label: 'Atlanta, GA', address: '123 Peachtree St, Atlanta, GA 30309' },
-    { value: 'detroit', label: 'Detroit, MI', address: '456 Woodward Ave, Detroit, MI 48226' },
-    { value: 'flint', label: 'Flint, MI', address: '789 Saginaw St, Flint, MI 48502' }
-  ];
-
-  const timeSlots = [
-    { value: '10:00-11:30', label: '10:00 AM - 11:30 AM' },
-    { value: '12:00-13:30', label: '12:00 PM - 1:30 PM' },
-    { value: '14:00-15:30', label: '2:00 PM - 3:30 PM' },
-    { value: '16:00-17:30', label: '4:00 PM - 5:30 PM' }
-  ];
-
-  const baseCost = 25; // $25 per participant
-  const donationCost = 5; // $5 per donation ticket
-  const totalCost = (participants * baseCost) + (donationTickets * donationCost);
-
-  const handleBookNow = () => {
-    if (!selectedDate || !selectedLocation || !selectedTimeSlot) {
-      setError('Please fill in all required fields');
-      return;
-    }
-
-    if (!user) {
-      setError('You must be logged in to book a tour');
-      return;
-    }
-
-    setError('');
-    setShowPaymentForm(true);
-  };
-
-  const processPayment = async () => {
-    setIsLoading(true);
-    setError('');
-
-    try {
-      // Simulate payment processing
-      await new Promise(resolve => setTimeout(resolve, 2000));
-
-      // Simulate payment success (90% success rate for testing)
-      const paymentSuccess = Math.random() > 0.1;
-      
-      if (!paymentSuccess) {
-        throw new Error('Payment failed. Please try again.');
-      }
-
-      // Create booking after successful payment
-      const bookingData = {
-        user_id: user!.id,
-        date: selectedDate!.toISOString().split('T')[0],
-        location: selectedLocation,
-        time_slot: selectedTimeSlot,
-        participants,
-        donation_tickets: donationTickets,
-        total_cost: totalCost,
-        status: 'confirmed' as const
-      };
-
-      const bookingResult = await createBooking(bookingData);
-      
-      if (!bookingResult.success) {
-        throw new Error(bookingResult.error || 'Failed to create booking');
-      }
-
-      setSuccess(true);
-      await refreshBookings();
-      
-      // Redirect to dashboard after 3 seconds
-      setTimeout(() => {
-        navigate('/dashboard');
-      }, 3000);
-
-    } catch (error: any) {
-      console.error('Payment error:', error);
-      setError(error.message || 'Payment failed. Please try again.');
->>>>>>> 8c9d782b51df86acdf3f79094d50305611f9cc65
     } finally {
       setIsLoading(false);
     }
   };
 
-<<<<<<< HEAD
   const changeMonth = (direction: 'prev' | 'next') => {
     setCurrentMonth(prev => {
       const newMonth = new Date(prev);
@@ -375,9 +412,52 @@ const BookTour: React.FC = () => {
     return date.toLocaleDateString('en-US', { month: 'long', year: 'numeric' });
   };
 
-  const getDayName = (day: number) => {
-    const days = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
-    return days[day];
+
+
+  // Fetch session availability for a specific date and location
+  const fetchSessionAvailability = async (date: string, location: string) => {
+    setLoadingSessions(true);
+    try {
+      const token = localStorage.getItem('token');
+      if (!token) return;
+
+      const response = await fetch(
+        `${import.meta.env.VITE_API_URL || 'http://localhost:3001/api'}/bookings/availability?date=${date}&location=${location}`,
+        {
+          headers: {
+            'Authorization': `Bearer ${token}`,
+            'Content-Type': 'application/json',
+          },
+        }
+      );
+
+      if (response.ok) {
+        const data = await response.json();
+        setSessionData(data.sessions || []);
+      }
+    } catch (error) {
+      console.error('Error fetching session availability:', error);
+    } finally {
+      setLoadingSessions(false);
+    }
+  };
+
+  // Get available spots for a specific time slot
+  const getAvailableSpots = (timeSlot: string): number => {
+    if (!selectedDate || !bookingData.location) return 25; // Default to 25 if no data
+
+    const session = sessionData.find(s => 
+      s.date === selectedDate.toISOString().split('T')[0] && 
+      s.location === bookingData.location && 
+      s.timeSlot === timeSlot
+    );
+
+    return session ? Math.max(0, session.maxParticipants - session.currentParticipants) : 25;
+  };
+
+  // Check if a session is full
+  const isSessionFull = (timeSlot: string): boolean => {
+    return getAvailableSpots(timeSlot) === 0;
   };
 
   return (
@@ -526,6 +606,19 @@ const BookTour: React.FC = () => {
                   </button>
                 ))}
               </div>
+
+              {/* Location Address Display */}
+              {bookingData.selectedLocationAddress && (
+                <div className="mt-6 p-4 bg-blue-50 rounded-lg border border-blue-200">
+                  <div className="flex items-start space-x-3">
+                    <MapPin className="h-5 w-5 text-blue-600 mt-0.5 flex-shrink-0" />
+                    <div>
+                      <h4 className="text-sm font-medium text-blue-900 mb-1">Location Address:</h4>
+                      <p className="text-sm text-blue-800">{bookingData.selectedLocationAddress}</p>
+                    </div>
+                  </div>
+                </div>
+              )}
             </div>
 
             {/* Time Selection */}
@@ -536,24 +629,92 @@ const BookTour: React.FC = () => {
                 </div>
                 <div>
                   <h2 className="text-2xl font-bold text-gray-900">Select Time</h2>
-                  <p className="text-gray-600">Choose your preferred time slot.</p>
+                  <p className="text-gray-600">Choose your preferred time slot. Each session is 1 hour 15 minutes (includes training time).</p>
                 </div>
               </div>
 
-              <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
-                {timeSlots.map((time) => (
-                  <button
-                    key={time}
-                    onClick={() => handleTimeSelect(time)}
-                    className={`py-3 px-4 rounded-xl border-2 transition-all ${
-                      bookingData.time === time
-                        ? 'border-blue-500 bg-blue-50 text-blue-700 font-medium'
-                        : 'border-gray-200 hover:border-gray-300 hover:bg-gray-50'
-                    }`}
-                  >
-                    {time}
-                  </button>
-                ))}
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-2 gap-4">
+                {timeSlots.filter(time => !isSessionFull(time)).map((time) => {
+                  const availableSpots = getAvailableSpots(time);
+                  const maxParticipants = 25;
+                  const isLowAvailability = availableSpots <= 5;
+                  
+                  return (
+                    <button
+                      key={time}
+                      onClick={() => handleTimeSelect(time)}
+                      disabled={availableSpots < bookingData.participants}
+                      className={`py-4 px-4 rounded-xl border-2 transition-all text-center ${
+                        bookingData.time === time
+                          ? 'border-blue-500 bg-blue-50 text-blue-700 font-medium'
+                          : availableSpots < bookingData.participants
+                          ? 'border-gray-200 bg-gray-100 text-gray-400 cursor-not-allowed'
+                          : 'border-gray-200 hover:border-gray-300 hover:bg-gray-50'
+                      }`}
+                    >
+                      <div className="text-sm font-medium">{time}</div>
+                      <div className={`text-xs mt-1 ${
+                        isLowAvailability ? 'text-orange-600' : 'text-gray-500'
+                      }`}>
+                        {availableSpots} of {maxParticipants} spots available
+                        {isLowAvailability && ' (Limited!)'}
+                      </div>
+                      {loadingSessions && (
+                        <div className="text-xs text-blue-500 mt-1">Loading...</div>
+                      )}
+                    </button>
+                  );
+                })}
+                {timeSlots.filter(time => !isSessionFull(time)).length === 0 && (
+                  <div className="col-span-full text-center py-8 text-gray-500">
+                    <Clock className="h-8 w-8 mx-auto mb-2 text-gray-400" />
+                    <p>No available time slots for this date and location.</p>
+                    <p className="text-sm mt-1">Please select a different date or location.</p>
+                  </div>
+                )}
+              </div>
+            </div>
+
+            {/* User Type Selection */}
+            <div className="bg-white rounded-2xl shadow-lg p-8">
+              <div className="flex items-center space-x-3 mb-6">
+                <div className="w-12 h-12 bg-purple-100 rounded-full flex items-center justify-center">
+                  <Users className="h-6 w-6 text-purple-600" />
+                </div>
+                <div>
+                  <h2 className="text-2xl font-bold text-gray-900">Booking Type</h2>
+                  <p className="text-gray-600">Are you booking as a parent or making a donation?</p>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
+                <button
+                  onClick={() => handleUserTypeChange(false)}
+                  className={`p-6 rounded-xl border-2 transition-all text-left ${
+                    !bookingData.isDonor
+                      ? 'border-blue-500 bg-blue-50 shadow-lg'
+                      : 'border-gray-200 hover:border-gray-300 hover:shadow-md'
+                  }`}
+                >
+                  <h3 className="text-lg font-semibold text-gray-900 mb-2">Parent/Guardian</h3>
+                  <p className="text-gray-600 text-sm">Booking for your children</p>
+                  <p className="text-gray-500 text-xs mt-2">• Max 100 students</p>
+                  <p className="text-gray-500 text-xs">• Session capacity limits apply</p>
+                </button>
+                
+                <button
+                  onClick={() => handleUserTypeChange(true)}
+                  className={`p-6 rounded-xl border-2 transition-all text-left ${
+                    bookingData.isDonor
+                      ? 'border-green-500 bg-green-50 shadow-lg'
+                      : 'border-gray-200 hover:border-gray-300 hover:shadow-md'
+                  }`}
+                >
+                  <h3 className="text-lg font-semibold text-gray-900 mb-2">Donor/Sponsor</h3>
+                  <p className="text-gray-600 text-sm">Sponsoring students' experiences</p>
+                  <p className="text-gray-500 text-xs mt-2">• Unlimited participants</p>
+                  <p className="text-gray-500 text-xs">• Choose specific location to support</p>
+                </button>
               </div>
             </div>
 
@@ -565,7 +726,12 @@ const BookTour: React.FC = () => {
                 </div>
                 <div>
                   <h2 className="text-2xl font-bold text-gray-900">Number of Participants</h2>
-                  <p className="text-gray-600">How many students will be joining?</p>
+                  <p className="text-gray-600">
+                    {bookingData.isDonor 
+                      ? "How many students would you like to sponsor?"
+                      : "How many students will be joining? (Max 100 per booking)"
+                    }
+                  </p>
                 </div>
               </div>
 
@@ -574,13 +740,247 @@ const BookTour: React.FC = () => {
                 onChange={(e) => handleParticipantsChange(parseInt(e.target.value))}
                 className="w-full px-4 py-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-colors"
               >
-                {[1, 2, 3, 4, 5, 6, 7, 8, 9, 10].map(num => (
-                  <option key={num} value={num}>
-                    {num} {num === 1 ? 'Student' : 'Students'}
-                  </option>
-                ))}
+                {(() => {
+                  let maxParticipants;
+                  
+                  if (bookingData.isDonor) {
+                    // Donors can select unlimited participants (practical limit of 1000)
+                    maxParticipants = 1000;
+                  } else {
+                    // Parents limited to available spots or 100, whichever is smaller
+                    if (!bookingData.time) {
+                      maxParticipants = 100;
+                    } else {
+                      const maxAvailable = getAvailableSpots(bookingData.time);
+                      maxParticipants = Math.max(1, Math.min(100, maxAvailable));
+                    }
+                  }
+                  
+                  const options = [];
+                  // For donors, show increments of 10 for large numbers to avoid huge dropdown
+                  if (bookingData.isDonor && maxParticipants > 50) {
+                    for (let i = 1; i <= 50; i++) {
+                      options.push(
+                        <option key={i} value={i}>
+                          {i} {i === 1 ? 'Student' : 'Students'}
+                        </option>
+                      );
+                    }
+                    // Add larger increments
+                    for (let i = 60; i <= 200; i += 10) {
+                      options.push(
+                        <option key={i} value={i}>
+                          {i} Students
+                        </option>
+                      );
+                    }
+                    // Add even larger increments
+                    for (let i = 250; i <= 1000; i += 50) {
+                      options.push(
+                        <option key={i} value={i}>
+                          {i} Students
+                        </option>
+                      );
+                    }
+                  } else {
+                    // Normal dropdown for parents or small donor amounts
+                    for (let i = 1; i <= Math.min(maxParticipants, 100); i++) {
+                      options.push(
+                        <option key={i} value={i}>
+                          {i} {i === 1 ? 'Student' : 'Students'}
+                        </option>
+                      );
+                    }
+                  }
+                  
+                  return options;
+                })()}
               </select>
+              {bookingData.time && !bookingData.isDonor && getAvailableSpots(bookingData.time) < 25 && (
+                <p className="mt-2 text-sm text-orange-600">
+                  Only {getAvailableSpots(bookingData.time)} spots available for this time slot.
+                </p>
+              )}
             </div>
+
+            {/* Attendee Details */}
+            {bookingData.participants > 0 && (
+              <div className="bg-white rounded-2xl shadow-lg p-8">
+                <div className="flex items-center space-x-3 mb-6">
+                  <div className="w-12 h-12 bg-indigo-100 rounded-full flex items-center justify-center">
+                    <Users className="h-6 w-6 text-indigo-600" />
+                  </div>
+                  <div>
+                    <h2 className="text-2xl font-bold text-gray-900">Attendee Information</h2>
+                    <p className="text-gray-600">
+                      {bookingData.isDonor 
+                        ? "Provide details for students you're sponsoring (optional)"
+                        : "Enter details for each student attending"
+                      }
+                    </p>
+                  </div>
+                </div>
+
+                <div className="space-y-6 max-h-96 overflow-y-auto">
+                  {bookingData.attendees.map((attendee, index) => (
+                    <div key={index} className="p-6 bg-gray-50 rounded-xl border border-gray-200">
+                      <h3 className="text-lg font-semibold text-gray-900 mb-4">Student {index + 1} Profile</h3>
+                      
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        {/* First Name */}
+                        <div>
+                          <label className="block text-sm font-medium text-gray-700 mb-1">
+                            First Name {!bookingData.isDonor && <span className="text-red-500">*</span>}
+                          </label>
+                          <input
+                            type="text"
+                            value={attendee.firstName}
+                            onChange={(e) => handleAttendeeChange(index, 'firstName', e.target.value)}
+                            className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                            placeholder="Enter first name"
+                            required={!bookingData.isDonor}
+                          />
+                        </div>
+
+                        {/* Last Name */}
+                        <div>
+                          <label className="block text-sm font-medium text-gray-700 mb-1">
+                            Last Name {!bookingData.isDonor && <span className="text-red-500">*</span>}
+                          </label>
+                          <input
+                            type="text"
+                            value={attendee.lastName}
+                            onChange={(e) => handleAttendeeChange(index, 'lastName', e.target.value)}
+                            className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                            placeholder="Enter last name"
+                            required={!bookingData.isDonor}
+                          />
+                        </div>
+
+                        {/* Email Address */}
+                        <div>
+                          <label className="block text-sm font-medium text-gray-700 mb-1">
+                            Email Address {!bookingData.isDonor && <span className="text-red-500">*</span>}
+                          </label>
+                          <input
+                            type="email"
+                            value={attendee.email}
+                            onChange={(e) => handleAttendeeChange(index, 'email', e.target.value)}
+                            className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                            placeholder="student@email.com"
+                            required={!bookingData.isDonor}
+                          />
+                        </div>
+
+                        {/* Current School */}
+                        <div>
+                          <label className="block text-sm font-medium text-gray-700 mb-1">
+                            Current School {!bookingData.isDonor && <span className="text-red-500">*</span>}
+                          </label>
+                          <input
+                            type="text"
+                            value={attendee.currentSchool}
+                            onChange={(e) => handleAttendeeChange(index, 'currentSchool', e.target.value)}
+                            className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                            placeholder="Enter school name"
+                            required={!bookingData.isDonor}
+                          />
+                        </div>
+
+                        {/* Interest Dropdown */}
+                        <div>
+                          <label className="block text-sm font-medium text-gray-700 mb-1">
+                            Educational Interest {!bookingData.isDonor && <span className="text-red-500">*</span>}
+                          </label>
+                          <select
+                            value={attendee.interest}
+                            onChange={(e) => handleAttendeeChange(index, 'interest', e.target.value)}
+                            className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                            required={!bookingData.isDonor}
+                          >
+                            <option value="">Select interest</option>
+                            {interestOptions.map((option, i) => (
+                              <option key={i} value={option}>{option}</option>
+                            ))}
+                          </select>
+                        </div>
+
+                        {/* GPA Selection */}
+                        <div>
+                          <label className="block text-sm font-medium text-gray-700 mb-1">
+                            GPA {!bookingData.isDonor && <span className="text-red-500">*</span>}
+                          </label>
+                          <select
+                            value={attendee.gpa}
+                            onChange={(e) => handleAttendeeChange(index, 'gpa', e.target.value)}
+                            className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                            required={!bookingData.isDonor}
+                          >
+                            <option value="">Select GPA</option>
+                            {gpaOptions.map((gpa, i) => (
+                              <option key={i} value={gpa}>{gpa}</option>
+                            ))}
+                          </select>
+                          <p className="text-xs text-gray-500 mt-1">
+                            All GPAs are accepted; we use GPA to tailor your experience at the hub.
+                          </p>
+                        </div>
+
+                        {/* Email Consent */}
+                        <div className="md:col-span-2">
+                          <label className="flex items-center space-x-2">
+                            <input
+                              type="checkbox"
+                              checked={attendee.emailConsent}
+                              onChange={(e) => handleAttendeeChange(index, 'emailConsent', e.target.checked)}
+                              className="rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                            />
+                            <span className="text-sm font-medium text-gray-700">
+                              Can we have colleges email your student?
+                            </span>
+                          </label>
+                        </div>
+
+                        {/* Legacy fields for backward compatibility */}
+                        <div>
+                          <label className="block text-sm font-medium text-gray-700 mb-1">
+                            Grade/Year (Optional)
+                          </label>
+                          <input
+                            type="text"
+                            value={attendee.grade || ''}
+                            onChange={(e) => handleAttendeeChange(index, 'grade', e.target.value)}
+                            className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                            placeholder="e.g., 12th Grade"
+                          />
+                        </div>
+                        
+                        <div>
+                          <label className="block text-sm font-medium text-gray-700 mb-1">
+                            School (Optional)
+                          </label>
+                          <input
+                            type="text"
+                            value={attendee.school || ''}
+                            onChange={(e) => handleAttendeeChange(index, 'school', e.target.value)}
+                            className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                            placeholder="School name"
+                          />
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+
+                {bookingData.participants > 5 && (
+                  <div className="mt-4 p-3 bg-blue-50 rounded-lg">
+                    <p className="text-sm text-blue-700">
+                      📝 Tip: You can fill in the details later if needed. For now, just the number of participants is required to proceed.
+                    </p>
+                  </div>
+                )}
+              </div>
+            )}
           </div>
 
           {/* Right Column - Booking Summary */}
@@ -591,12 +991,19 @@ const BookTour: React.FC = () => {
               {/* Summary Details */}
               <div className="space-y-4 mb-6">
                 <div className="flex justify-between">
+                  <span className="text-gray-600">Booking Type:</span>
+                  <span className={`font-medium ${bookingData.isDonor ? 'text-green-600' : 'text-blue-600'}`}>
+                    {bookingData.isDonor ? 'Donor/Sponsor' : 'Parent/Guardian'}
+                  </span>
+                </div>
+                <div className="flex justify-between">
                   <span className="text-gray-600">Date:</span>
                   <span className="font-medium">
                     {selectedDate ? selectedDate.toLocaleDateString('en-US', { 
                       weekday: 'long', 
                       month: 'long', 
-                      day: 'numeric' 
+                      day: 'numeric',
+                      year: 'numeric'
                     }) : 'Not selected'}
                   </span>
                 </div>
@@ -616,6 +1023,23 @@ const BookTour: React.FC = () => {
                   <span className="text-gray-600">Participants:</span>
                   <span className="font-medium">{bookingData.participants}</span>
                 </div>
+                {bookingData.attendees.some(a => a.firstName || a.name) && (
+                  <div className="border-t pt-4">
+                    <span className="text-gray-600 text-sm">Attendees:</span>
+                    <div className="mt-2 max-h-32 overflow-y-auto">
+                      {bookingData.attendees.filter(a => a.firstName || a.name).map((attendee, index) => (
+                        <div key={index} className="text-sm text-gray-700 py-1">
+                          {attendee.firstName && attendee.lastName 
+                            ? `${attendee.firstName} ${attendee.lastName}`
+                            : attendee.name
+                          }
+                          {attendee.grade && ` (${attendee.grade})`}
+                          {attendee.interest && ` - ${attendee.interest}`}
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
               </div>
 
               {/* Pricing */}
@@ -719,444 +1143,10 @@ const BookTour: React.FC = () => {
           onPaymentSuccess={handlePaymentSuccess}
           bookingData={bookingData}
         />
-=======
-  if (success) {
-    return (
-      <div className="min-h-screen bg-gradient-to-br from-green-50 to-blue-50 flex items-center justify-center py-12 px-4">
-        <div className="max-w-md w-full text-center">
-          <div className="bg-white rounded-2xl shadow-xl p-8">
-            <div className="w-16 h-16 bg-green-100 rounded-full flex items-center justify-center mx-auto mb-6">
-              <CheckCircle className="h-8 w-8 text-green-600" />
-            </div>
-            <h2 className="text-2xl font-bold text-gray-900 mb-4">Booking Confirmed!</h2>
-            <p className="text-gray-600 mb-6">
-              Your VR college tour has been booked and paid for. You'll receive a confirmation email shortly.
-            </p>
-            <div className="bg-gray-50 rounded-xl p-4 mb-6">
-              <div className="text-sm text-gray-600 space-y-2">
-                <div className="flex justify-between">
-                  <span>Date:</span>
-                  <span className="font-medium">{selectedDate?.toLocaleDateString()}</span>
-                </div>
-                <div className="flex justify-between">
-                  <span>Location:</span>
-                  <span className="font-medium">{locations.find(l => l.value === selectedLocation)?.label}</span>
-                </div>
-                <div className="flex justify-between">
-                  <span>Time:</span>
-                  <span className="font-medium">{timeSlots.find(t => t.value === selectedTimeSlot)?.label}</span>
-                </div>
-                <div className="flex justify-between">
-                  <span>Participants:</span>
-                  <span className="font-medium">{participants}</span>
-                </div>
-                <div className="flex justify-between font-semibold">
-                  <span>Amount Paid:</span>
-                  <span>${totalCost}</span>
-                </div>
-              </div>
-            </div>
-            <p className="text-sm text-gray-500">Redirecting to dashboard...</p>
-          </div>
-        </div>
-      </div>
-    );
-  }
-
-  return (
-    <div className="min-h-screen bg-gradient-to-br from-blue-50 to-purple-50 py-12 px-4">
-      <div className="max-w-4xl mx-auto">
-        <div className="text-center mb-8">
-          <h1 className="text-4xl font-bold text-gray-900 mb-4">Book Your VR College Tour</h1>
-          <p className="text-xl text-gray-600">
-            Choose your preferred date, location, and time for an immersive college experience
-          </p>
-        </div>
-
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
-          {/* Booking Form */}
-          <div className="bg-white rounded-2xl shadow-xl p-8">
-            <h2 className="text-2xl font-bold text-gray-900 mb-6">Tour Details</h2>
-            
-            {error && (
-              <div className="mb-6 p-4 bg-red-50 border border-red-200 rounded-xl flex items-center">
-                <div className="text-red-600 text-sm">{error}</div>
-              </div>
-            )}
-
-            <div className="space-y-6">
-              {/* Location Selection */}
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-3">
-                  <MapPin className="inline h-4 w-4 mr-2" />
-                  Select Location
-                </label>
-                <div className="space-y-3">
-                  {locations.map((location) => (
-                    <label key={location.value} className="flex items-start space-x-3 cursor-pointer">
-                      <input
-                        type="radio"
-                        name="location"
-                        value={location.value}
-                        checked={selectedLocation === location.value}
-                        onChange={(e) => setSelectedLocation(e.target.value)}
-                        className="mt-1 h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300"
-                      />
-                      <div className="flex-1">
-                        <div className="font-medium text-gray-900">{location.label}</div>
-                        <div className="text-sm text-gray-500">{location.address}</div>
-                      </div>
-                    </label>
-                  ))}
-                </div>
-              </div>
-
-              {/* Time Slot Selection */}
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-3">
-                  <Clock className="inline h-4 w-4 mr-2" />
-                  Select Time Slot
-                </label>
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                  {timeSlots.map((slot) => (
-                    <label key={slot.value} className="flex items-center space-x-3 cursor-pointer">
-                      <input
-                        type="radio"
-                        name="timeSlot"
-                        value={slot.value}
-                        checked={selectedTimeSlot === slot.value}
-                        onChange={(e) => setSelectedTimeSlot(e.target.value)}
-                        className="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300"
-                      />
-                      <span className="text-sm font-medium text-gray-900">{slot.label}</span>
-                    </label>
-                  ))}
-                </div>
-              </div>
-
-              {/* Participants */}
-              <div>
-                <label htmlFor="participants" className="block text-sm font-medium text-gray-700 mb-2">
-                  <Users className="inline h-4 w-4 mr-2" />
-                  Number of Participants
-                </label>
-                <select
-                  id="participants"
-                  value={participants}
-                  onChange={(e) => setParticipants(parseInt(e.target.value))}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                >
-                  {[1, 2, 3, 4, 5, 6].map(num => (
-                    <option key={num} value={num}>{num} {num === 1 ? 'person' : 'people'}</option>
-                  ))}
-                </select>
-              </div>
-
-              {/* Donation Tickets */}
-              <div>
-                <label htmlFor="donationTickets" className="block text-sm font-medium text-gray-700 mb-2">
-                  <DollarSign className="inline h-4 w-4 mr-2" />
-                  Donation Tickets (Optional)
-                </label>
-                <select
-                  id="donationTickets"
-                  value={donationTickets}
-                  onChange={(e) => setDonationTickets(parseInt(e.target.value))}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                >
-                  {[0, 1, 2, 3, 4, 5].map(num => (
-                    <option key={num} value={num}>
-                      {num === 0 ? 'No donation tickets' : `${num} donation ${num === 1 ? 'ticket' : 'tickets'} (+$${num * donationCost})`}
-                    </option>
-                  ))}
-                </select>
-                <p className="mt-1 text-xs text-gray-500">
-                  Help support students who can't afford tours
-                </p>
-              </div>
-
-              {/* Cost Summary */}
-              <div className="bg-gray-50 rounded-xl p-4">
-                <h3 className="font-medium text-gray-900 mb-3">Cost Summary</h3>
-                <div className="space-y-2 text-sm">
-                  <div className="flex justify-between">
-                    <span>Tour tickets ({participants} × $25)</span>
-                    <span>${participants * baseCost}</span>
-                  </div>
-                  {donationTickets > 0 && (
-                    <div className="flex justify-between">
-                      <span>Donation tickets ({donationTickets} × $5)</span>
-                      <span>${donationTickets * donationCost}</span>
-                    </div>
-                  )}
-                  <div className="border-t border-gray-200 pt-2 flex justify-between font-semibold">
-                    <span>Total</span>
-                    <span>${totalCost}</span>
-                  </div>
-                </div>
-              </div>
-
-              {/* Book Now Button */}
-              <button
-                onClick={handleBookNow}
-                disabled={!selectedDate || !selectedLocation || !selectedTimeSlot}
-                className="w-full bg-gradient-to-r from-blue-600 to-purple-600 text-white font-semibold py-3 px-4 rounded-xl hover:from-blue-700 hover:to-purple-700 focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center"
-              >
-                <CalendarIcon className="h-5 w-5 mr-2" />
-                Book Now - ${totalCost}
-              </button>
-            </div>
-          </div>
-
-          {/* Calendar */}
-          <div>
-            <h2 className="text-2xl font-bold text-gray-900 mb-6">
-              <CalendarIcon className="inline h-6 w-6 mr-2" />
-              Select Date
-            </h2>
-            <Calendar selectedDate={selectedDate} onDateSelect={setSelectedDate} />
-            
-            {selectedDate && (
-              <div className="mt-6 p-4 bg-blue-50 border border-blue-200 rounded-xl">
-                <p className="text-blue-800 font-medium">
-                  Selected: {selectedDate.toLocaleDateString('en-US', {
-                    weekday: 'long',
-                    year: 'numeric',
-                    month: 'long',
-                    day: 'numeric'
-                  })}
-                </p>
-              </div>
-            )}
-
-            {/* Tour Information */}
-            <div className="mt-8 bg-white rounded-xl p-6 shadow-sm border border-gray-200">
-              <h3 className="text-lg font-semibold text-gray-900 mb-4">What's Included</h3>
-              <ul className="space-y-3 text-sm text-gray-600">
-                <li className="flex items-center">
-                  <CheckCircle className="h-4 w-4 text-green-500 mr-3" />
-                  90-minute immersive VR experience
-                </li>
-                <li className="flex items-center">
-                  <CheckCircle className="h-4 w-4 text-green-500 mr-3" />
-                  Tours of 3-5 different colleges
-                </li>
-                <li className="flex items-center">
-                  <CheckCircle className="h-4 w-4 text-green-500 mr-3" />
-                  Interactive Q&A with college representatives
-                </li>
-                <li className="flex items-center">
-                  <CheckCircle className="h-4 w-4 text-green-500 mr-3" />
-                  College information packets
-                </li>
-                <li className="flex items-center">
-                  <CheckCircle className="h-4 w-4 text-green-500 mr-3" />
-                  Refreshments and snacks
-                </li>
-              </ul>
-            </div>
-
-            {/* Payment Security Notice */}
-            <div className="mt-6 bg-green-50 border border-green-200 rounded-xl p-4">
-              <div className="flex items-center">
-                <CheckCircle className="h-5 w-5 text-green-600 mr-3" />
-                <div>
-                  <p className="text-sm font-medium text-green-800">Secure Payment</p>
-                  <p className="text-xs text-green-600">
-                    Your payment is processed securely through Stripe
-                  </p>
-                </div>
-              </div>
-            </div>
-          </div>
-        </div>
-
-        {/* Payment Form Modal */}
-        {showPaymentForm && (
-          <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
-            <div className="bg-white rounded-2xl shadow-2xl max-w-md w-full max-h-[90vh] overflow-y-auto">
-              <div className="p-6">
-                <div className="flex items-center justify-between mb-6">
-                  <h3 className="text-2xl font-bold text-gray-900">Payment Details</h3>
-                  <button
-                    onClick={() => setShowPaymentForm(false)}
-                    className="p-2 hover:bg-gray-100 rounded-lg transition-colors"
-                  >
-                    <X className="h-5 w-5 text-gray-500" />
-                  </button>
-                </div>
-
-                {/* Payment Method Selection */}
-                <div className="mb-6">
-                  <label className="block text-sm font-medium text-gray-700 mb-3">
-                    Choose Payment Method
-                  </label>
-                  <div className="grid grid-cols-2 gap-3">
-                    <button
-                      onClick={() => setPaymentMethod('card')}
-                      className={`p-4 border-2 rounded-xl flex flex-col items-center transition-all ${
-                        paymentMethod === 'card'
-                          ? 'border-blue-500 bg-blue-50 text-blue-700'
-                          : 'border-gray-200 hover:border-gray-300'
-                      }`}
-                    >
-                      <CreditCard className="h-6 w-6 mb-2" />
-                      <span className="font-medium">Card</span>
-                    </button>
-                    <button
-                      onClick={() => setPaymentMethod('upi')}
-                      className={`p-4 border-2 rounded-xl flex flex-col items-center transition-all ${
-                        paymentMethod === 'upi'
-                          ? 'border-blue-500 bg-blue-50 text-blue-700'
-                          : 'border-gray-200 hover:border-gray-300'
-                      }`}
-                    >
-                      <Smartphone className="h-6 w-6 mb-2" />
-                      <span className="font-medium">UPI</span>
-                    </button>
-                  </div>
-                </div>
-
-                {/* Card Payment Form */}
-                {paymentMethod === 'card' && (
-                  <div className="space-y-4 mb-6">
-                    <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-2">
-                        Card Number
-                      </label>
-                      <input
-                        type="text"
-                        value={cardDetails.number}
-                        onChange={(e) => setCardDetails({...cardDetails, number: e.target.value})}
-                        className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                        placeholder="4242 4242 4242 4242"
-                      />
-                      <p className="text-xs text-gray-500 mt-1">Use test card: 4242424242424242</p>
-                    </div>
-                    <div className="grid grid-cols-2 gap-3">
-                      <div>
-                        <label className="block text-sm font-medium text-gray-700 mb-2">
-                          Expiry Date
-                        </label>
-                        <input
-                          type="text"
-                          value={cardDetails.expiry}
-                          onChange={(e) => setCardDetails({...cardDetails, expiry: e.target.value})}
-                          className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                          placeholder="MM/YY"
-                        />
-                      </div>
-                      <div>
-                        <label className="block text-sm font-medium text-gray-700 mb-2">
-                          CVC
-                        </label>
-                        <input
-                          type="text"
-                          value={cardDetails.cvc}
-                          onChange={(e) => setCardDetails({...cardDetails, cvc: e.target.value})}
-                          className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                          placeholder="123"
-                        />
-                      </div>
-                    </div>
-                    <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-2">
-                        Cardholder Name
-                      </label>
-                      <input
-                        type="text"
-                        value={cardDetails.name}
-                        onChange={(e) => setCardDetails({...cardDetails, name: e.target.value})}
-                        className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                        placeholder="John Doe"
-                      />
-                    </div>
-                  </div>
-                )}
-
-                {/* UPI Payment Form */}
-                {paymentMethod === 'upi' && (
-                  <div className="space-y-4 mb-6">
-                    <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-2">
-                        UPI ID
-                      </label>
-                      <input
-                        type="text"
-                        value={upiId}
-                        onChange={(e) => setUpiId(e.target.value)}
-                        className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                        placeholder="yourname@upi"
-                      />
-                      <p className="text-xs text-gray-500 mt-1">Use test UPI: test@upi</p>
-                    </div>
-                  </div>
-                )}
-
-                {/* Order Summary */}
-                <div className="bg-gray-50 rounded-xl p-4 mb-6">
-                  <h4 className="font-medium text-gray-900 mb-3">Order Summary</h4>
-                  <div className="space-y-2 text-sm">
-                    <div className="flex justify-between">
-                      <span>Tour Date:</span>
-                      <span className="font-medium">{selectedDate?.toLocaleDateString()}</span>
-                    </div>
-                    <div className="flex justify-between">
-                      <span>Location:</span>
-                      <span className="font-medium">{locations.find(l => l.value === selectedLocation)?.label}</span>
-                    </div>
-                    <div className="flex justify-between">
-                      <span>Participants:</span>
-                      <span className="font-medium">{participants}</span>
-                    </div>
-                    <div className="border-t border-gray-200 pt-2 flex justify-between font-semibold text-lg">
-                      <span>Total Amount:</span>
-                      <span>${totalCost}</span>
-                    </div>
-                  </div>
-                </div>
-
-                {error && (
-                  <div className="mb-4 p-3 bg-red-50 border border-red-200 rounded-lg">
-                    <p className="text-red-600 text-sm">{error}</p>
-                  </div>
-                )}
-
-                {/* Payment Button */}
-                <button
-                  onClick={processPayment}
-                  disabled={isLoading}
-                  className="w-full bg-gradient-to-r from-green-600 to-blue-600 text-white font-semibold py-3 px-4 rounded-xl hover:from-green-700 hover:to-blue-700 focus:ring-2 focus:ring-green-500 focus:ring-offset-2 transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center"
-                >
-                  {isLoading ? (
-                    <>
-                      <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-white mr-2"></div>
-                      Processing Payment...
-                    </>
-                  ) : (
-                    <>
-                      <CreditCard className="h-5 w-5 mr-2" />
-                      Pay ${totalCost}
-                    </>
-                  )}
-                </button>
-
-                <p className="text-xs text-gray-500 text-center mt-4">
-                  This is a test payment. No real money will be charged.
-                </p>
-              </div>
-            </div>
-          </div>
-        )}
->>>>>>> 8c9d782b51df86acdf3f79094d50305611f9cc65
       </div>
     </div>
   );
 };
 
-<<<<<<< HEAD
 export default BookTour;
 
-=======
-export default BookTour;
->>>>>>> 8c9d782b51df86acdf3f79094d50305611f9cc65

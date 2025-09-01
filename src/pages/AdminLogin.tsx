@@ -143,7 +143,15 @@ const AdminLogin: React.FC = () => {
           {/* Back to Main Site */}
           <div className="mt-6 text-center">
             <button
-              onClick={() => navigate('/')}
+              onClick={() => {
+                // Clear ALL tokens to ensure proper navigation
+                localStorage.removeItem('adminToken');
+                localStorage.removeItem('adminUser');
+                localStorage.removeItem('token');
+                localStorage.removeItem('user');
+                // Force a page reload to ensure navigation state is updated
+                window.location.href = '/';
+              }}
               className="text-gray-500 hover:text-gray-700 text-sm transition-colors"
             >
               ← Back to Main Site

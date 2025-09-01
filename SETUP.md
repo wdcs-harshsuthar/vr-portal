@@ -203,21 +203,44 @@ VR-portal/
 └── package.json           # Frontend dependencies
 ```
 
-## 🔄 Migration from Supabase
+## 🗄️ Database Configuration
 
-### What Changed
-- ✅ Removed `@supabase/supabase-js` dependency
-- ✅ Updated auth functions to use local API
-- ✅ Updated AuthContext to work with new API
-- ✅ Removed Supabase-specific code
-- ✅ Added proper error handling
+### PostgreSQL Setup
+The project uses PostgreSQL as the primary database. Make sure you have:
 
-### What You Need to Do
-1. Set up PostgreSQL database
-2. Configure environment variables
-3. Start API server
-4. Update frontend environment
-5. Test authentication flow
+1. **PostgreSQL installed and running**
+2. **Database created**: `vr_portal`
+3. **User configured**: `postgres` (or your preferred user)
+4. **Environment variables set** in `api/.env`
+
+### Environment Variables
+The project uses two `.env` files:
+
+**Frontend** (`/.env`):
+```env
+VITE_API_URL=http://localhost:3001/api
+```
+
+**Backend** (`/api/.env`):
+```env
+# PostgreSQL Database Configuration
+DB_HOST=localhost
+DB_PORT=5432
+DB_NAME=vr_portal
+DB_USER=postgres
+DB_PASSWORD=your_password_here
+
+# JWT Configuration
+JWT_SECRET=your_jwt_secret_here
+JWT_EXPIRES_IN=7d
+
+# CORS Configuration
+CORS_ORIGIN=http://localhost:5173
+
+# Stripe Configuration
+STRIPE_SECRET_KEY=your_stripe_secret_key
+STRIPE_WEBHOOK_SECRET=your_webhook_secret
+```
 
 ## 🎯 Next Steps
 

@@ -1,19 +1,127 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { Link } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
-import { Calendar, MapPin, Clock, Users, Plus, Eye, CheckCircle, AlertCircle, XCircle } from 'lucide-react';
+import { Calendar, MapPin, Clock, Users, Plus, Eye, CheckCircle, AlertCircle, XCircle, ChevronDown, ChevronUp, Heart, UserCheck } from 'lucide-react';
 
 const Dashboard: React.FC = () => {
-  const { user, bookings } = useAuth();
+  const { user, bookings, refreshBookings, retryAuth, isLoading } = useAuth();
+  const [expandedBookings, setExpandedBookings] = useState<Set<string>>(new Set());
+
+
+
+  // Check if a booking can be modified (not past or current)
+  const canModifyBooking = (bookingDate: string, bookingTime: string) => {
+    const now = new Date();
+    const bookingDateTime = new Date(bookingDate);
+    
+    // Parse time slot to get start time
+    const timeMatch = bookingTime.match(/(\d{1,2}):(\d{2})\s*(AM|PM)/);
+    if (timeMatch) {
+      const hour = parseInt(timeMatch[1]);
+      const minute = parseInt(timeMatch[2]);
+      const period = timeMatch[3];
+      
+      let adjustedHour = hour;
+      if (period === 'PM' && hour !== 12) adjustedHour += 12;
+      if (period === 'AM' && hour === 12) adjustedHour = 0;
+      
+      bookingDateTime.setHours(adjustedHour, minute, 0, 0);
+    }
+    
+    // Add 1 hour 15 minutes to get end time
+    const endTime = new Date(bookingDateTime.getTime() + (75 * 60 * 1000));
+    
+    return now < bookingDateTime; // Can modify if current time is before booking start time
+  };
+
+  // Toggle booking expansion
+  const toggleBookingExpansion = (bookingId: string) => {
+    const newExpanded = new Set(expandedBookings);
+    if (newExpanded.has(bookingId)) {
+      newExpanded.delete(bookingId);
+    } else {
+      newExpanded.add(bookingId);
+    }
+    setExpandedBookings(newExpanded);
+  };
+
+  // Get booking status with time context
+  const getBookingStatusInfo = (booking: any) => {
+    const canModify = canModifyBooking(booking.date, booking.timeSlot || booking.time_slot);
+    
+    if (booking.status === 'cancelled') {
+      return { status: 'cancelled', canModify: false, message: 'Cancelled' };
+    }
+    
+    if (!canModify) {
+      return { status: 'completed', canModify: false, message: 'Completed' };
+    }
+    
+    return { status: booking.status, canModify: true, message: 'Booked' };
+  };
+
+  // Get display status for user-friendly display
+  const getDisplayStatus = (status: string) => {
+    switch (status) {
+      case 'pending':
+      case 'confirmed':
+        return 'Booked';
+      case 'cancelled':
+        return 'Cancelled';
+      case 'completed':
+        return 'Completed';
+      default:
+        return status;
+    }
+  };
+
+  // Handle booking cancellation
+  const handleCancelBooking = async (bookingId: string) => {
+    if (!confirm('Are you sure you want to cancel this booking?')) {
+      return;
+    }
+
+    try {
+      const token = localStorage.getItem('token');
+      if (!token) {
+        alert('Authentication required. Please login again.');
+        return;
+      }
+
+      const response = await fetch(
+        `${import.meta.env.VITE_API_URL || 'http://localhost:3001/api'}/bookings/${bookingId}/cancel`,
+        {
+          method: 'PATCH',
+          headers: {
+            'Authorization': `Bearer ${token}`,
+            'Content-Type': 'application/json',
+          },
+        }
+      );
+
+      if (response.ok) {
+        // Refresh bookings to show updated status
+        await refreshBookings();
+        alert('Booking cancelled successfully');
+      } else {
+        const data = await response.json();
+        alert(data.error || 'Failed to cancel booking');
+      }
+    } catch (error) {
+      console.error('Error cancelling booking:', error);
+      alert('Failed to cancel booking. Please try again.');
+    }
+  };
 
   const getStatusIcon = (status: string) => {
     switch (status) {
       case 'confirmed':
-        return <CheckCircle className="h-5 w-5 text-green-500" />;
       case 'pending':
-        return <AlertCircle className="h-5 w-5 text-yellow-500" />;
+        return <CheckCircle className="h-5 w-5 text-green-500" />;
       case 'cancelled':
         return <XCircle className="h-5 w-5 text-red-500" />;
+      case 'completed':
+        return <CheckCircle className="h-5 w-5 text-blue-500" />;
       default:
         return <AlertCircle className="h-5 w-5 text-gray-500" />;
     }
@@ -22,11 +130,12 @@ const Dashboard: React.FC = () => {
   const getStatusColor = (status: string) => {
     switch (status) {
       case 'confirmed':
-        return 'bg-green-100 text-green-800 border-green-200';
       case 'pending':
-        return 'bg-yellow-100 text-yellow-800 border-yellow-200';
+        return 'bg-green-100 text-green-800 border-green-200';
       case 'cancelled':
         return 'bg-red-100 text-red-800 border-red-200';
+      case 'completed':
+        return 'bg-blue-100 text-blue-800 border-blue-200';
       default:
         return 'bg-gray-100 text-gray-800 border-gray-200';
     }
@@ -49,15 +158,23 @@ const Dashboard: React.FC = () => {
         <div className="bg-gradient-to-r from-blue-600 to-purple-600 rounded-2xl p-8 text-white mb-8">
           <div className="flex items-center justify-between">
             <div>
-<<<<<<< HEAD
-              <h1 className="text-3xl font-bold mb-2">Welcome back, {user?.name || user?.email}!</h1>
-=======
-              <h1 className="text-3xl font-bold mb-2">Welcome back, {user?.user_metadata?.name || user?.email}!</h1>
-              <h1 className="text-3xl font-bold mb-2">Welcome back, {user?.name}!</h1>
->>>>>>> 8c9d782b51df86acdf3f79094d50305611f9cc65
+              <h1 className="text-3xl font-bold mb-2">
+                Welcome back, {user?.name || user?.email || 'User'}!
+              </h1>
               <p className="text-blue-100 text-lg">
                 Ready to explore more colleges? Your VR journey continues here.
               </p>
+              {!user && (
+                <div className="mt-4">
+                  <button
+                    onClick={retryAuth}
+                    disabled={isLoading}
+                    className="px-4 py-2 bg-white/20 hover:bg-white/30 rounded-lg text-white font-medium transition-colors disabled:opacity-50"
+                  >
+                    {isLoading ? 'Loading...' : 'Retry Authentication'}
+                  </button>
+                </div>
+              )}
             </div>
             <div className="hidden md:block">
               <div className="w-20 h-20 bg-white/20 rounded-full flex items-center justify-center">
@@ -146,57 +263,174 @@ const Dashboard: React.FC = () => {
                   </div>
                 ) : (
                   <div className="space-y-4">
-                    {bookings.map((booking) => (
-                      <div
-                        key={booking.id}
-                        className="border border-gray-200 rounded-xl p-6 hover:shadow-md transition-shadow"
-                      >
-                        <div className="flex items-start justify-between">
-                          <div className="flex-1">
-                            <div className="flex items-center mb-3">
-                              <h3 className="text-lg font-semibold text-gray-900 mr-3">
-                                VR College Tour
-                              </h3>
-                              <span
-                                className={`inline-flex items-center px-3 py-1 rounded-full text-xs font-medium border ${getStatusColor(
-                                  booking.status
-                                )}`}
-                              >
-                                {getStatusIcon(booking.status)}
-                                <span className="ml-1 capitalize">{booking.status}</span>
-                              </span>
-                            </div>
-
-                            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 text-sm">
-                              <div className="flex items-center text-gray-600">
-                                <Calendar className="h-4 w-4 mr-2 text-blue-500" />
-                                <span>{formatDate(booking.date)}</span>
-                              </div>
-                              <div className="flex items-center text-gray-600">
-                                <MapPin className="h-4 w-4 mr-2 text-green-500" />
-                                <span>{booking.location}</span>
-                              </div>
-                              <div className="flex items-center text-gray-600">
-                                <Clock className="h-4 w-4 mr-2 text-purple-500" />
-                                <span>{booking.timeSlot || booking.time_slot}</span>
-                              </div>
-                              <div className="flex items-center text-gray-600">
-                                <Users className="h-4 w-4 mr-2 text-orange-500" />
-                                <span>
-                                  {booking.participants} {booking.participants === 1 ? 'participant' : 'participants'}
+                    {bookings.map((booking) => {
+                      const statusInfo = getBookingStatusInfo(booking);
+                      const isExpanded = expandedBookings.has(booking.id);
+                      
+                      return (
+                        <div
+                          key={booking.id}
+                          className={`border border-gray-200 rounded-xl p-6 transition-all ${
+                            statusInfo.canModify ? 'hover:shadow-md' : 'opacity-75'
+                          }`}
+                        >
+                          <div className="flex items-start justify-between">
+                            <div className="flex-1">
+                              <div className="flex items-center mb-3">
+                                <div className="flex items-center mr-3">
+                                  <h3 className="text-lg font-semibold text-gray-900 mr-2">
+                                    VR College Tour
+                                  </h3>
+                                  {booking.is_donor && (
+                                    <span className="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-green-100 text-green-800 border border-green-200">
+                                      <Heart className="h-3 w-3 mr-1" />
+                                      Donor
+                                    </span>
+                                  )}
+                                </div>
+                                <span
+                                  className={`inline-flex items-center px-3 py-1 rounded-full text-xs font-medium border ${getStatusColor(
+                                    statusInfo.status
+                                  )}`}
+                                >
+                                  {getStatusIcon(statusInfo.status)}
+                                  <span className="ml-1">{getDisplayStatus(statusInfo.status)}</span>
                                 </span>
                               </div>
+
+                              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 text-sm">
+                                <div className="flex items-center text-gray-600">
+                                  <Calendar className="h-4 w-4 mr-2 text-blue-500" />
+                                  <span>{formatDate(booking.date)}</span>
+                                </div>
+                                <div className="flex items-center text-gray-600">
+                                  <MapPin className="h-4 w-4 mr-2 text-green-500" />
+                                  <span>{booking.location}</span>
+                                </div>
+                                <div className="flex items-center text-gray-600">
+                                  <Clock className="h-4 w-4 mr-2 text-purple-500" />
+                                  <span>{booking.timeSlot || booking.time_slot}</span>
+                                </div>
+                                <div className="flex items-center text-gray-600">
+                                  <Users className="h-4 w-4 mr-2 text-orange-500" />
+                                  <span>
+                                    {booking.participants} {booking.participants === 1 ? 'participant' : 'participants'}
+                                  </span>
+                                </div>
+                              </div>
+
+                              {/* Attendee Information */}
+                              {booking.attendees && booking.attendees.length > 0 && (
+                                <div className="mt-4">
+                                  <button
+                                    onClick={() => toggleBookingExpansion(booking.id)}
+                                    className="flex items-center text-sm text-blue-600 hover:text-blue-800 font-medium"
+                                  >
+                                    {isExpanded ? (
+                                      <>
+                                        <ChevronUp className="h-4 w-4 mr-1" />
+                                        Hide Attendees
+                                      </>
+                                    ) : (
+                                      <>
+                                        <ChevronDown className="h-4 w-4 mr-1" />
+                                        Show Attendees ({booking.attendees.filter(a => a.name || (a.firstName && a.lastName)).length})
+                                      </>
+                                    )}
+                                  </button>
+                                  
+                                  {isExpanded && (
+                                    <div className="mt-3 p-4 bg-gray-50 rounded-lg">
+                                      <h4 className="font-medium text-gray-900 mb-3 flex items-center">
+                                        <UserCheck className="h-4 w-4 mr-2 text-blue-500" />
+                                        Attendees
+                                      </h4>
+                                      <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                                        {booking.attendees.map((attendee, index) => {
+                                          const displayName = attendee.firstName && attendee.lastName 
+                                            ? `${attendee.firstName} ${attendee.lastName}`
+                                            : attendee.name;
+                                          const initial = displayName ? displayName.charAt(0).toUpperCase() : '?';
+                                          
+                                          return (
+                                            <div key={index} className="flex items-center space-x-3 p-2 bg-white rounded border">
+                                              <div className="w-8 h-8 bg-blue-100 rounded-full flex items-center justify-center">
+                                                <span className="text-sm font-medium text-blue-600">
+                                                  {initial}
+                                                </span>
+                                              </div>
+                                              <div className="flex-1">
+                                                <p className="font-medium text-gray-900">{displayName}</p>
+                                                {attendee.email && (
+                                                  <p className="text-sm text-gray-600">{attendee.email}</p>
+                                                )}
+                                                {attendee.currentSchool && (
+                                                  <p className="text-sm text-gray-600">{attendee.currentSchool}</p>
+                                                )}
+                                                {attendee.interest && (
+                                                  <p className="text-xs text-blue-600">{attendee.interest}</p>
+                                                )}
+                                                {attendee.gpa && (
+                                                  <p className="text-xs text-green-600">GPA: {attendee.gpa}</p>
+                                                )}
+                                                {attendee.grade && (
+                                                  <p className="text-xs text-gray-500">{attendee.grade}</p>
+                                                )}
+                                                {attendee.school && (
+                                                  <p className="text-xs text-gray-500">{attendee.school}</p>
+                                                )}
+                                              </div>
+                                            </div>
+                                          );
+                                        })}
+                                      </div>
+                                    </div>
+                                  )}
+                                </div>
+                              )}
+
+                              {/* College Information */}
+                              {booking.college_name && (
+                                <div className="mt-3 p-3 bg-blue-50 rounded-lg">
+                                  <p className="text-sm text-blue-800">
+                                    <strong>College:</strong> {booking.college_name}
+                                  </p>
+                                </div>
+                              )}
+                            </div>
+
+                            <div className="ml-4 flex flex-col items-end space-y-2">
+                              <div className="text-right">
+                                <div className="text-lg font-bold text-gray-900">
+                                  ${(typeof booking.total_cost === 'string' ? parseFloat(booking.total_cost) : booking.total_cost).toFixed(2)}
+                                </div>
+                                <div className="text-sm text-gray-500">
+                                  {booking.donation_tickets > 0 && `+${booking.donation_tickets} donation tickets`}
+                                </div>
+                              </div>
+                              
+                              {statusInfo.canModify ? (
+                                <div className="flex space-x-2">
+                                  <button className="text-blue-600 hover:text-blue-800 font-medium text-sm">
+                                    Modify
+                                  </button>
+                                  <button 
+                                    onClick={() => handleCancelBooking(booking.id)}
+                                    className="text-red-600 hover:text-red-800 font-medium text-sm"
+                                  >
+                                    Cancel
+                                  </button>
+                                </div>
+                              ) : (
+                                <span className="text-sm text-gray-500">
+                                  {statusInfo.status === 'completed' ? 'Past booking' : 'Cannot modify'}
+                                </span>
+                              )}
                             </div>
                           </div>
-
-                          <div className="ml-4">
-                            <button className="text-blue-600 hover:text-blue-800 font-medium text-sm">
-                              View Details
-                            </button>
-                          </div>
                         </div>
-                      </div>
-                    ))}
+                      );
+                    })}
                   </div>
                 )}
               </div>
@@ -218,9 +452,9 @@ const Dashboard: React.FC = () => {
                   <p className="text-gray-900">{user?.email}</p>
                 </div>
               </div>
-              <button className="mt-4 text-blue-600 hover:text-blue-800 font-medium text-sm">
+              <Link to="/profile" className="mt-4 text-blue-600 hover:text-blue-800 font-medium text-sm">
                 Edit Profile
-              </button>
+              </Link>
             </div>
 
             {/* Quick Actions */}
@@ -262,9 +496,9 @@ const Dashboard: React.FC = () => {
               <p className="text-gray-600 text-sm mb-4">
                 Our support team is here to help you make the most of your VR college tours.
               </p>
-              <button className="text-green-600 hover:text-green-800 font-medium text-sm">
+              <Link to="/contact-support" className="text-green-600 hover:text-green-800 font-medium text-sm">
                 Contact Support
-              </button>
+              </Link>
             </div>
           </div>
         </div>

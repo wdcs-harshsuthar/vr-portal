@@ -111,24 +111,7 @@ const ContactSupport: React.FC = () => {
   return (
     <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100">
       {/* Header */}
-      <div className="bg-white shadow-sm border-b">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="flex justify-between items-center h-16">
-            <Link to="/" className="flex items-center space-x-2">
-              <div className="p-2 bg-gradient-to-r from-blue-600 to-purple-600 rounded-lg">
-                <Eye className="h-6 w-6 text-white" />
-              </div>
-              <span className="text-xl font-bold text-gray-900">360 Hub Experience</span>
-            </Link>
-            <Link
-              to="/"
-              className="px-4 py-2 text-gray-600 hover:text-blue-600 transition-colors"
-            >
-              Back to Home
-            </Link>
-          </div>
-        </div>
-      </div>
+    
 
       {/* Main Content */}
       <div className="max-w-7xl mx-auto py-12 px-4 sm:px-6 lg:px-8">
@@ -154,7 +137,7 @@ const ContactSupport: React.FC = () => {
                   </div>
                   <div>
                     <h3 className="font-semibold text-gray-900">Email Support</h3>
-                    <p className="text-gray-600">support@360hubexperience.com</p>
+                    <p className="text-gray-600">hbcu3sixty@gmail.com</p>
                     <p className="text-sm text-gray-500 mt-1">Response within 2-4 hours</p>
                   </div>
                 </div>
@@ -165,7 +148,7 @@ const ContactSupport: React.FC = () => {
                   </div>
                   <div>
                     <h3 className="font-semibold text-gray-900">Phone Support</h3>
-                    <p className="text-gray-600">+1 (555) 123-4567</p>
+                    <p className="text-gray-600">470-399-5309</p>
                     <p className="text-sm text-gray-500 mt-1">Available 24/7</p>
                   </div>
                 </div>
@@ -197,48 +180,30 @@ const ContactSupport: React.FC = () => {
             {/* Contact Form */}
             <div className="bg-white rounded-2xl shadow-lg p-8">
               <h2 className="text-2xl font-bold text-gray-900 mb-6">Send us a Message</h2>
-              <form className="space-y-4">
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">Name</label>
-                  <input
-                    type="text"
-                    className="w-full px-4 py-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-colors"
-                    placeholder="Your full name"
-                  />
-                </div>
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">Email</label>
-                  <input
-                    type="email"
-                    className="w-full px-4 py-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-colors"
-                    placeholder="your.email@example.com"
-                  />
-                </div>
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">Subject</label>
-                  <select className="w-full px-4 py-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-colors">
-                    <option>General Inquiry</option>
-                    <option>Technical Support</option>
-                    <option>Booking Assistance</option>
-                    <option>Billing Question</option>
-                    <option>Feedback</option>
-                  </select>
-                </div>
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">Message</label>
-                  <textarea
-                    rows={4}
-                    className="w-full px-4 py-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-colors"
-                    placeholder="Describe your question or issue..."
-                  ></textarea>
-                </div>
+              <div className="text-center">
+                <p className="text-gray-600 mb-6">
+                  Click the button below to open your email client and send us a message directly.
+                </p>
                 <button
-                  type="submit"
-                  className="w-full py-3 px-6 bg-blue-600 text-white font-semibold rounded-xl hover:bg-blue-700 transition-colors"
+                  onClick={() => {
+                    const subject = encodeURIComponent('VR Portal Support Request');
+                    const body = encodeURIComponent(`Hello VR Portal Support Team,
+
+I would like to get in touch regarding:
+
+[Please describe your question or issue here]
+
+Best regards,
+[Your name]`);
+                    const mailtoLink = `mailto:hbcu3sixty@gmail.com?subject=${subject}&body=${body}`;
+                    window.open(mailtoLink, '_blank');
+                  }}
+                  className="inline-flex items-center px-8 py-4 bg-gradient-to-r from-blue-600 to-purple-600 text-white font-semibold rounded-xl hover:from-blue-700 hover:to-purple-700 transition-all duration-200 transform hover:scale-105"
                 >
-                  Send Message
+                  <Mail className="h-5 w-5 mr-2" />
+                  Send Email Message
                 </button>
-              </form>
+              </div>
             </div>
           </div>
 

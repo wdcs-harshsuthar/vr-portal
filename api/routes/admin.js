@@ -87,26 +87,42 @@ router.get('/bookings', authenticateAdmin, async (req, res) => {
         b.status,
         b.college_id,
         b.college_name,
+        b.is_donor,
         b.created_at,
-        u.name as user_name
+        u.name as user_name,
+        u.email as user_email
       FROM bookings b
       JOIN users u ON b.user_id = u.id
       ORDER BY b.created_at DESC
     `);
 
-    const bookings = result.rows.map(booking => ({
-      id: booking.id,
-      user_name: booking.user_name,
-      date: booking.date,
-      location: booking.location,
-      time_slot: booking.time_slot,
-      participants: booking.participants,
-      donation_tickets: booking.donation_tickets,
-      total_cost: parseFloat(booking.total_cost),
-      status: booking.status,
-      college_id: booking.college_id,
-      college_name: booking.college_name,
-      created_at: booking.created_at
+    const bookings = await Promise.all(result.rows.map(async (booking) => {
+      // Fetch attendees for this booking
+      const attendeesResult = await pool.query(
+        `SELECT name, grade, school, 
+                first_name, last_name, email, current_school, 
+                interest, gpa, email_consent 
+         FROM attendees WHERE booking_id = $1 ORDER BY created_at`,
+        [booking.id]
+      );
+      
+      return {
+        id: booking.id,
+        user_name: booking.user_name,
+        user_email: booking.user_email,
+        date: booking.date,
+        location: booking.location,
+        time_slot: booking.time_slot,
+        participants: booking.participants,
+        donation_tickets: booking.donation_tickets,
+        total_cost: parseFloat(booking.total_cost),
+        status: booking.status,
+        college_id: booking.college_id,
+        college_name: booking.college_name,
+        is_donor: booking.is_donor,
+        created_at: booking.created_at,
+        attendees: attendeesResult.rows
+      };
     }));
 
     res.json({
@@ -131,9 +147,7 @@ router.get('/stats', authenticateAdmin, async (req, res) => {
     const pendingBookingsResult = await pool.query("SELECT COUNT(*) FROM bookings WHERE status = 'pending'");
     const pendingBookings = parseInt(pendingBookingsResult.rows[0].count);
 
-    // Get confirmed bookings
-    const confirmedBookingsResult = await pool.query("SELECT COUNT(*) FROM bookings WHERE status = 'confirmed'");
-    const confirmedBookings = parseInt(confirmedBookingsResult.rows[0].count);
+
 
     // Get total revenue
     const totalRevenueResult = await pool.query('SELECT COALESCE(SUM(total_cost), 0) FROM bookings');
@@ -152,7 +166,7 @@ router.get('/stats', authenticateAdmin, async (req, res) => {
       success: true,
       totalBookings,
       pendingBookings,
-      confirmedBookings,
+      confirmedBookings: 0,
       totalRevenue,
       thisMonthBookings,
       thisMonthRevenue
@@ -164,50 +178,7 @@ router.get('/stats', authenticateAdmin, async (req, res) => {
   }
 });
 
-// Update booking status (admin only)
-router.patch('/bookings/:id/status', authenticateAdmin, [
-  body('status').isIn(['pending', 'confirmed', 'cancelled']).withMessage('Invalid status')
-], async (req, res) => {
-  try {
-    // Check validation errors
-    const errors = validationResult(req);
-    if (!errors.isEmpty()) {
-      return res.status(400).json({ 
-        error: 'Validation failed', 
-        details: errors.array() 
-      });
-    }
 
-    const { id } = req.params;
-    const { status } = req.body;
-
-    // Update booking status
-    const result = await pool.query(
-      'UPDATE bookings SET status = $1, updated_at = CURRENT_TIMESTAMP WHERE id = $2 RETURNING *',
-      [status, id]
-    );
-
-    if (result.rows.length === 0) {
-      return res.status(404).json({ error: 'Booking not found' });
-    }
-
-    const updatedBooking = result.rows[0];
-
-    res.json({
-      success: true,
-      message: 'Booking status updated successfully',
-      booking: {
-        id: updatedBooking.id,
-        status: updatedBooking.status,
-        updated_at: updatedBooking.updated_at
-      }
-    });
-
-  } catch (error) {
-    console.error('Update booking status error:', error);
-    res.status(500).json({ error: 'Internal server error' });
-  }
-});
 
 // Get all users (admin only)
 router.get('/users', authenticateAdmin, async (req, res) => {

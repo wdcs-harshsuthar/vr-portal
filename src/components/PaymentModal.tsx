@@ -1,5 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { X, CreditCard, Smartphone, Lock, CheckCircle, AlertCircle } from 'lucide-react';
+import { Elements, CardElement, useStripe, useElements } from '@stripe/react-stripe-js';
+import { stripePromise, testCards } from '../lib/stripe';
 
 interface PaymentModalProps {
   isOpen: boolean;
@@ -9,74 +11,25 @@ interface PaymentModalProps {
   bookingData: any;
 }
 
-const PaymentModal: React.FC<PaymentModalProps> = ({ 
-  isOpen, 
-  onClose, 
-  amount, 
-  onPaymentSuccess,
-  bookingData 
-}) => {
-  const [paymentMethod, setPaymentMethod] = useState<'card' | 'upi'>('card');
+const PaymentForm: React.FC<{
+  amount: number;
+  onPaymentSuccess: () => void;
+  onClose: () => void;
+  bookingData: any;
+}> = ({ amount, onPaymentSuccess, onClose, bookingData }) => {
+  const stripe = useStripe();
+  const elements = useElements();
   const [isProcessing, setIsProcessing] = useState(false);
   const [paymentStatus, setPaymentStatus] = useState<'pending' | 'success' | 'failed'>('pending');
   const [errorMessage, setErrorMessage] = useState('');
-
-  // Test card numbers for Stripe
-  const testCards = [
-    { number: '4242424242424242', name: 'Visa (Success)', type: 'visa' },
-    { number: '4000000000000002', name: 'Visa (Declined)', type: 'visa' },
-    { number: '5555555555554444', name: 'Mastercard (Success)', type: 'mastercard' },
-    { number: '4000000000009995', name: 'Visa (Insufficient Funds)', type: 'visa' }
-  ];
-
-  const [cardData, setCardData] = useState({
-    number: '',
-    expiry: '',
-    cvc: '',
-    name: '',
-    zip: ''
-  });
+  const [paymentMethod, setPaymentMethod] = useState<'card' | 'upi'>('card');
 
   const [upiData, setUpiData] = useState({
     upiId: ''
   });
 
-  useEffect(() => {
-    if (isOpen) {
-      setPaymentStatus('pending');
-      setErrorMessage('');
-      setCardData({ number: '', expiry: '', cvc: '', name: '', zip: '' });
-      setUpiData({ upiId: '' });
-    }
-  }, [isOpen]);
-
-  const handleCardInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const { name, value } = e.target;
-    let formattedValue = value;
-
-    // Format card number with spaces
-    if (name === 'number') {
-      formattedValue = value.replace(/\s/g, '').replace(/(\d{4})/g, '$1 ').trim();
-    }
-
-    // Format expiry date
-    if (name === 'expiry') {
-      formattedValue = value.replace(/\D/g, '').replace(/(\d{2})(\d)/, '$1/$2');
-    }
-
-    setCardData(prev => ({ ...prev, [name]: formattedValue }));
-  };
-
   const handleUpiInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     setUpiData({ upiId: e.target.value });
-  };
-
-  const validateCardForm = () => {
-    if (!cardData.number.replace(/\s/g, '') || !cardData.expiry || !cardData.cvc || !cardData.name || !cardData.zip) {
-      setErrorMessage('Please fill in all card details');
-      return false;
-    }
-    return true;
   };
 
   const validateUpiForm = () => {
@@ -87,7 +40,77 @@ const PaymentModal: React.FC<PaymentModalProps> = ({
     return true;
   };
 
-  const simulatePayment = async () => {
+  const handleCardPayment = async () => {
+    if (!stripe || !elements) {
+      setErrorMessage('Stripe has not loaded yet. Please try again.');
+      return;
+    }
+
+    setIsProcessing(true);
+    setErrorMessage('');
+
+    try {
+      // Create payment method
+      const { error: paymentMethodError, paymentMethod } = await stripe.createPaymentMethod({
+        type: 'card',
+        card: elements.getElement(CardElement)!,
+      });
+
+      if (paymentMethodError) {
+        throw new Error(paymentMethodError.message);
+      }
+
+      // Create payment intent
+      const response = await fetch(`${import.meta.env.VITE_API_URL || 'http://localhost:3001/api'}/payments/create-intent`, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${localStorage.getItem('token')}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          amount: Math.round(amount * 100), // Convert to cents
+          currency: 'usd',
+          description: `VR College Tour Booking - ${bookingData?.college_name || 'General Tour'}`,
+          metadata: {
+            bookingId: bookingData?.id || '',
+            location: bookingData?.location || '',
+            date: bookingData?.date || '',
+            participants: bookingData?.participants?.toString() || '1'
+          }
+        }),
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.error || 'Failed to create payment intent');
+      }
+
+      const { clientSecret } = await response.json();
+
+      // Confirm payment
+      const { error: confirmError } = await stripe.confirmCardPayment(clientSecret, {
+        payment_method: paymentMethod.id,
+      });
+
+      if (confirmError) {
+        throw new Error(confirmError.message);
+      }
+
+      setPaymentStatus('success');
+      setTimeout(() => {
+        onPaymentSuccess();
+        onClose();
+      }, 2000);
+
+    } catch (error: any) {
+      setPaymentStatus('failed');
+      setErrorMessage(error.message || 'Payment failed. Please try again.');
+    } finally {
+      setIsProcessing(false);
+    }
+  };
+
+  const simulateUpiPayment = async () => {
     setIsProcessing(true);
     setErrorMessage('');
 
@@ -95,19 +118,7 @@ const PaymentModal: React.FC<PaymentModalProps> = ({
     await new Promise(resolve => setTimeout(resolve, 2000));
 
     try {
-      // Simulate payment processing
-      if (paymentMethod === 'card') {
-        // Check if it's a test declined card
-        const cardNumber = cardData.number.replace(/\s/g, '');
-        if (cardNumber === '4000000000000002') {
-          throw new Error('Your card was declined. Please try a different card.');
-        }
-        if (cardNumber === '4000000000009995') {
-          throw new Error('Your card has insufficient funds.');
-        }
-      }
-
-      // Simulate successful payment
+      // Simulate successful UPI payment
       setPaymentStatus('success');
       setTimeout(() => {
         onPaymentSuccess();
@@ -126,24 +137,160 @@ const PaymentModal: React.FC<PaymentModalProps> = ({
     e.preventDefault();
     
     if (paymentMethod === 'card') {
-      if (!validateCardForm()) return;
+      await handleCardPayment();
     } else {
       if (!validateUpiForm()) return;
+      await simulateUpiPayment();
     }
-
-    await simulatePayment();
   };
 
-  const selectTestCard = (card: any) => {
-    setCardData(prev => ({
-      ...prev,
-      number: card.number.replace(/(\d{4})/g, '$1 ').trim(),
-      name: 'Test User',
-      expiry: '12/25',
-      cvc: '123',
-      zip: '12345'
-    }));
+  const cardElementOptions = {
+    style: {
+      base: {
+        fontSize: '16px',
+        color: '#424770',
+        '::placeholder': {
+          color: '#aab7c4',
+        },
+      },
+      invalid: {
+        color: '#9e2146',
+      },
+    },
   };
+
+  return (
+    <form onSubmit={handleSubmit} className="p-6 space-y-6">
+      {/* Amount Display */}
+      <div className="bg-gray-50 rounded-xl p-4 text-center">
+        <p className="text-gray-600 text-sm">Total Amount</p>
+        <p className="text-3xl font-bold text-gray-900">${amount}</p>
+      </div>
+
+      {paymentMethod === 'card' ? (
+        /* Card Payment Form */
+        <div className="space-y-4">
+          {/* Test Cards */}
+          <div className="bg-blue-50 rounded-xl p-4">
+            <p className="text-sm font-medium text-blue-900 mb-3">Test Cards (Stripe)</p>
+            <div className="space-y-2">
+              {testCards.map((card, index) => (
+                <div
+                  key={index}
+                  className="block w-full text-left p-2 rounded-lg bg-blue-100"
+                >
+                  <span className="text-xs font-mono text-blue-700">{card.number}</span>
+                  <span className="text-xs text-blue-600 ml-2">({card.name})</span>
+                </div>
+              ))}
+            </div>
+          </div>
+
+          {/* Stripe Card Element */}
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-2">
+              Card Details
+            </label>
+            <div className="border border-gray-300 rounded-xl p-4 focus-within:ring-2 focus-within:ring-blue-500 focus-within:border-blue-500 transition-colors">
+              <CardElement options={cardElementOptions} />
+            </div>
+          </div>
+        </div>
+      ) : (
+        /* UPI Payment Form */
+        <div className="space-y-4">
+          <div className="bg-green-50 rounded-xl p-4">
+            <p className="text-sm text-green-700">
+              <Smartphone className="h-4 w-4 inline mr-2" />
+              UPI payments are processed securely through your preferred UPI app
+            </p>
+          </div>
+
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-2">
+              UPI ID
+            </label>
+            <input
+              type="text"
+              name="upiId"
+              value={upiData.upiId}
+              onChange={handleUpiInputChange}
+              placeholder="username@upi"
+              className="w-full px-4 py-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-colors"
+            />
+          </div>
+        </div>
+      )}
+
+      {/* Error Message */}
+      {errorMessage && (
+        <div className="bg-red-50 border border-red-200 rounded-xl p-4 flex items-center space-x-3">
+          <AlertCircle className="h-5 w-5 text-red-500" />
+          <span className="text-red-700 text-sm">{errorMessage}</span>
+        </div>
+      )}
+
+      {/* Success Message */}
+      {paymentStatus === 'success' && (
+        <div className="bg-green-50 border border-green-200 rounded-xl p-4 flex items-center space-x-3">
+          <CheckCircle className="h-5 w-5 text-green-500" />
+          <span className="text-green-700 text-sm">Payment successful! Redirecting...</span>
+        </div>
+      )}
+
+      {/* Submit Button */}
+      <button
+        type="submit"
+        disabled={isProcessing || paymentStatus === 'success'}
+        className={`w-full py-4 px-6 rounded-xl font-semibold text-white transition-all ${
+          isProcessing || paymentStatus === 'success'
+            ? 'bg-gray-400 cursor-not-allowed'
+            : 'bg-blue-600 hover:bg-blue-700 transform hover:scale-105'
+        } flex items-center justify-center space-x-2`}
+      >
+        {isProcessing ? (
+          <>
+            <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-white"></div>
+            <span>Processing Payment...</span>
+          </>
+        ) : paymentStatus === 'success' ? (
+          <>
+            <CheckCircle className="h-5 w-5" />
+            <span>Payment Successful!</span>
+          </>
+        ) : (
+          <>
+            <Lock className="h-5 w-5" />
+            <span>Pay ${amount}</span>
+          </>
+        )}
+      </button>
+
+      {/* Security Notice */}
+      <div className="text-center">
+        <p className="text-xs text-gray-500 flex items-center justify-center">
+          <Lock className="h-3 w-3 mr-1" />
+          Secure payment powered by Stripe
+        </p>
+      </div>
+    </form>
+  );
+};
+
+const PaymentModal: React.FC<PaymentModalProps> = ({ 
+  isOpen, 
+  onClose, 
+  amount, 
+  onPaymentSuccess,
+  bookingData 
+}) => {
+  const [paymentMethod, setPaymentMethod] = useState<'card' | 'upi'>('card');
+
+  useEffect(() => {
+    if (isOpen) {
+      setPaymentMethod('card');
+    }
+  }, [isOpen]);
 
   if (!isOpen) return null;
 
@@ -188,191 +335,23 @@ const PaymentModal: React.FC<PaymentModalProps> = ({
         </div>
 
         {/* Payment Form */}
-        <form onSubmit={handleSubmit} className="p-6 space-y-6">
-          {/* Amount Display */}
-          <div className="bg-gray-50 rounded-xl p-4 text-center">
-            <p className="text-gray-600 text-sm">Total Amount</p>
-            <p className="text-3xl font-bold text-gray-900">${amount}</p>
-          </div>
-
-          {paymentMethod === 'card' ? (
-            /* Card Payment Form */
-            <div className="space-y-4">
-              {/* Test Cards */}
-              <div className="bg-blue-50 rounded-xl p-4">
-                <p className="text-sm font-medium text-blue-900 mb-3">Test Cards (Stripe)</p>
-                <div className="space-y-2">
-                  {testCards.map((card, index) => (
-                    <button
-                      key={index}
-                      type="button"
-                      onClick={() => selectTestCard(card)}
-                      className="block w-full text-left p-2 rounded-lg hover:bg-blue-100 transition-colors"
-                    >
-                      <span className="text-xs font-mono text-blue-700">{card.number}</span>
-                      <span className="text-xs text-blue-600 ml-2">({card.name})</span>
-                    </button>
-                  ))}
-                </div>
-              </div>
-
-              {/* Card Number */}
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">
-                  Card Number
-                </label>
-                <input
-                  type="text"
-                  name="number"
-                  value={cardData.number}
-                  onChange={handleCardInputChange}
-                  placeholder="1234 5678 9012 3456"
-                  maxLength={19}
-                  className="w-full px-4 py-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-colors"
-                />
-              </div>
-
-              {/* Card Details Row */}
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">
-                    Expiry Date
-                  </label>
-                  <input
-                    type="text"
-                    name="expiry"
-                    value={cardData.expiry}
-                    onChange={handleCardInputChange}
-                    placeholder="MM/YY"
-                    maxLength={5}
-                    className="w-full px-4 py-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-colors"
-                  />
-                </div>
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">
-                    CVC
-                  </label>
-                  <input
-                    type="text"
-                    name="cvc"
-                    value={cardData.cvc}
-                    onChange={handleCardInputChange}
-                    placeholder="123"
-                    maxLength={4}
-                    className="w-full px-4 py-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-colors"
-                  />
-                </div>
-              </div>
-
-              {/* Cardholder Name */}
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">
-                  Cardholder Name
-                </label>
-                <input
-                  type="text"
-                  name="name"
-                  value={cardData.name}
-                  onChange={handleCardInputChange}
-                  placeholder="John Doe"
-                  className="w-full px-4 py-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-colors"
-                />
-              </div>
-
-              {/* ZIP Code */}
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">
-                  ZIP Code
-                </label>
-                <input
-                  type="text"
-                  name="zip"
-                  value={cardData.zip}
-                  onChange={handleCardInputChange}
-                  placeholder="12345"
-                  maxLength={5}
-                  className="w-full px-4 py-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-colors"
-                />
-              </div>
-            </div>
-          ) : (
-            /* UPI Payment Form */
-            <div className="space-y-4">
-              <div className="bg-green-50 rounded-xl p-4">
-                <p className="text-sm text-green-700">
-                  <Smartphone className="h-4 w-4 inline mr-2" />
-                  UPI payments are processed securely through your preferred UPI app
-                </p>
-              </div>
-
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">
-                  UPI ID
-                </label>
-                <input
-                  type="text"
-                  name="upiId"
-                  value={upiData.upiId}
-                  onChange={handleUpiInputChange}
-                  placeholder="username@upi"
-                  className="w-full px-4 py-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-colors"
-                />
-              </div>
-            </div>
-          )}
-
-          {/* Error Message */}
-          {errorMessage && (
-            <div className="bg-red-50 border border-red-200 rounded-xl p-4 flex items-center space-x-3">
-              <AlertCircle className="h-5 w-5 text-red-500" />
-              <span className="text-red-700 text-sm">{errorMessage}</span>
-            </div>
-          )}
-
-          {/* Success Message */}
-          {paymentStatus === 'success' && (
-            <div className="bg-green-50 border border-green-200 rounded-xl p-4 flex items-center space-x-3">
-              <CheckCircle className="h-5 w-5 text-green-500" />
-              <span className="text-green-700 text-sm">Payment successful! Redirecting...</span>
-            </div>
-          )}
-
-          {/* Submit Button */}
-          <button
-            type="submit"
-            disabled={isProcessing || paymentStatus === 'success'}
-            className={`w-full py-4 px-6 rounded-xl font-semibold text-white transition-all ${
-              isProcessing || paymentStatus === 'success'
-                ? 'bg-gray-400 cursor-not-allowed'
-                : 'bg-blue-600 hover:bg-blue-700 transform hover:scale-105'
-            } flex items-center justify-center space-x-2`}
-          >
-            {isProcessing ? (
-              <>
-                <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-white"></div>
-                <span>Processing Payment...</span>
-              </>
-            ) : paymentStatus === 'success' ? (
-              <>
-                <CheckCircle className="h-5 w-5" />
-                <span>Payment Successful!</span>
-              </>
-            ) : (
-              <>
-                <Lock className="h-5 w-5" />
-                <span>Pay ${amount}</span>
-              </>
-            )}
-          </button>
-
-          {/* Security Notice */}
-          <div className="text-center">
-            <p className="text-xs text-gray-500 flex items-center justify-center">
-              <Lock className="h-3 w-3 mr-1" />
-              Secure payment powered by Stripe
-            </p>
-          </div>
-        </form>
+        {paymentMethod === 'card' ? (
+          <Elements stripe={stripePromise}>
+            <PaymentForm
+              amount={amount}
+              onPaymentSuccess={onPaymentSuccess}
+              onClose={onClose}
+              bookingData={bookingData}
+            />
+          </Elements>
+        ) : (
+          <PaymentForm
+            amount={amount}
+            onPaymentSuccess={onPaymentSuccess}
+            onClose={onClose}
+            bookingData={bookingData}
+          />
+        )}
       </div>
     </div>
   );

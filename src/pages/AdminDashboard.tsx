@@ -9,8 +9,6 @@ import {
   Settings, 
   LogOut, 
   Eye, 
-  CheckCircle, 
-  XCircle, 
   Clock, 
   Building,
   Plus,
@@ -20,7 +18,8 @@ import {
   Trash2,
   BarChart3,
   FileText,
-  Shield
+  Shield,
+  X
 } from 'lucide-react';
 
 interface AdminUser {
@@ -32,14 +31,23 @@ interface AdminUser {
 interface Booking {
   id: string;
   user_name: string;
+  user_email: string;
   date: string;
   location: string;
   time_slot: string;
   participants: number;
+  donation_tickets: number;
   total_cost: number;
   status: string;
+  college_id?: string;
   college_name?: string;
+  is_donor: boolean;
   created_at: string;
+  attendees: Array<{
+    name: string;
+    grade?: string;
+    school?: string;
+  }>;
 }
 
 interface DashboardStats {
@@ -145,7 +153,6 @@ const AdminDashboard: React.FC = () => {
   const calculateStats = (bookingsData: Booking[]) => {
     const totalBookings = bookingsData.length;
     const pendingBookings = bookingsData.filter(b => b.status === 'pending').length;
-    const confirmedBookings = bookingsData.filter(b => b.status === 'confirmed').length;
     const totalRevenue = bookingsData.reduce((sum, b) => sum + b.total_cost, 0);
     
     const now = new Date();
@@ -165,7 +172,7 @@ const AdminDashboard: React.FC = () => {
     setStats({
       totalBookings,
       pendingBookings,
-      confirmedBookings,
+      confirmedBookings: 0,
       totalRevenue,
       thisMonthBookings,
       thisMonthRevenue
@@ -178,33 +185,7 @@ const AdminDashboard: React.FC = () => {
     navigate('/admin/login');
   };
 
-  const updateBookingStatus = async (bookingId: string, newStatus: string) => {
-    try {
-      const adminToken = localStorage.getItem('adminToken');
-      const response = await fetch(`${import.meta.env.VITE_API_URL || 'http://localhost:3001/api'}/admin/bookings/${bookingId}/status`, {
-        method: 'PATCH',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${adminToken}`,
-        },
-        body: JSON.stringify({ status: newStatus }),
-      });
 
-      if (response.ok) {
-        // Update local state
-        setBookings(prev => prev.map(booking => 
-          booking.id === bookingId 
-            ? { ...booking, status: newStatus }
-            : booking
-        ));
-        
-        // Recalculate stats
-        fetchDashboardData();
-      }
-    } catch (error) {
-      console.error('Error updating booking status:', error);
-    }
-  };
 
   const filteredBookings = bookings.filter(booking => {
     const matchesSearch = 
@@ -219,19 +200,37 @@ const AdminDashboard: React.FC = () => {
 
   const getStatusColor = (status: string) => {
     switch (status) {
-      case 'confirmed': return 'bg-green-100 text-green-800';
-      case 'pending': return 'bg-yellow-100 text-yellow-800';
-      case 'cancelled': return 'bg-red-100 text-red-800';
-      default: return 'bg-gray-100 text-gray-800';
+      case 'pending':
+      case 'confirmed':
+        return 'bg-green-100 text-green-800';
+      case 'cancelled':
+        return 'bg-red-100 text-red-800';
+      default:
+        return 'bg-gray-100 text-gray-800';
     }
   };
 
   const getStatusIcon = (status: string) => {
     switch (status) {
-      case 'confirmed': return <CheckCircle className="h-4 w-4" />;
-      case 'pending': return <Clock className="h-4 w-4" />;
-      case 'cancelled': return <XCircle className="h-4 w-4" />;
-      default: return <Clock className="h-4 w-4" />;
+      case 'pending':
+      case 'confirmed':
+        return <Calendar className="h-4 w-4" />;
+      case 'cancelled':
+        return <X className="h-4 w-4" />;
+      default:
+        return <Clock className="h-4 w-4" />;
+    }
+  };
+
+  const getDisplayStatus = (status: string) => {
+    switch (status) {
+      case 'pending':
+      case 'confirmed':
+        return 'Booked';
+      case 'cancelled':
+        return 'Cancelled';
+      default:
+        return status;
     }
   };
 
@@ -251,16 +250,7 @@ const AdminDashboard: React.FC = () => {
 
 
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-        {/* Logout Button */}
-        <div className="flex justify-end mb-6">
-          <button
-            onClick={handleLogout}
-            className="flex items-center space-x-2 px-4 py-2 text-gray-600 hover:text-red-600 transition-colors bg-white rounded-lg border border-gray-200 hover:border-red-200 hover:bg-red-50"
-          >
-            <LogOut className="h-4 w-4" />
-            <span>Logout</span>
-          </button>
-        </div>
+
         
         {/* Stats Grid */}
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
@@ -316,16 +306,10 @@ const AdminDashboard: React.FC = () => {
         {/* Bookings Section */}
         <div className="bg-white rounded-2xl shadow-sm border border-gray-200">
           <div className="p-6 border-b border-gray-200">
-            <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between space-y-4 sm:space-y-0">
-              <div>
-                <h2 className="text-xl font-bold text-gray-900">Bookings Management</h2>
-                <p className="text-sm text-gray-600">Manage all VR tour bookings</p>
-              </div>
-              <button className="inline-flex items-center px-4 py-2 bg-red-600 text-white rounded-xl hover:bg-red-700 transition-colors">
-                <Plus className="h-4 w-4 mr-2" />
-                Add Booking
-              </button>
-            </div>
+                      <div>
+            <h2 className="text-xl font-bold text-gray-900">Bookings Management</h2>
+            <p className="text-sm text-gray-600">Manage all VR tour bookings</p>
+          </div>
           </div>
 
           {/* Filters */}
@@ -350,8 +334,6 @@ const AdminDashboard: React.FC = () => {
               >
                 <option value="all">All Status</option>
                 <option value="pending">Pending</option>
-                <option value="confirmed">Confirmed</option>
-                <option value="cancelled">Cancelled</option>
               </select>
             </div>
           </div>
@@ -428,7 +410,7 @@ const AdminDashboard: React.FC = () => {
                     <td className="px-6 py-4 whitespace-nowrap">
                       <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${getStatusColor(booking.status)}`}>
                         {getStatusIcon(booking.status)}
-                        <span className="ml-1">{booking.status}</span>
+                        <span className="ml-1">{getDisplayStatus(booking.status)}</span>
                       </span>
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap text-sm font-medium">
@@ -439,20 +421,7 @@ const AdminDashboard: React.FC = () => {
                         >
                           <Eye className="h-4 w-4" />
                         </button>
-                        <button
-                          onClick={() => updateBookingStatus(booking.id, 'confirmed')}
-                          disabled={booking.status === 'confirmed'}
-                          className="text-green-600 hover:text-green-900 disabled:text-gray-400 transition-colors"
-                        >
-                          <CheckCircle className="h-4 w-4" />
-                        </button>
-                        <button
-                          onClick={() => updateBookingStatus(booking.id, 'cancelled')}
-                          disabled={booking.status === 'cancelled'}
-                          className="text-red-600 hover:text-red-900 disabled:text-gray-400 transition-colors"
-                        >
-                          <XCircle className="h-4 w-4" />
-                        </button>
+
                       </div>
                     </td>
                   </tr>
@@ -472,6 +441,184 @@ const AdminDashboard: React.FC = () => {
             </div>
           )}
         </div>
+
+        {/* Booking Details Modal */}
+        {selectedBooking && (
+          <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+            <div className="bg-white rounded-2xl max-w-4xl w-full max-h-[90vh] overflow-y-auto">
+              <div className="p-6 border-b border-gray-200">
+                <div className="flex items-center justify-between">
+                  <h2 className="text-xl font-bold text-gray-900">Booking Details</h2>
+                  <button
+                    onClick={() => setSelectedBooking(null)}
+                    className="text-gray-400 hover:text-gray-600 transition-colors"
+                  >
+                    <svg className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                    </svg>
+                  </button>
+                </div>
+              </div>
+
+              <div className="p-6 space-y-6">
+                {/* Customer Information */}
+                <div>
+                  <h3 className="text-lg font-semibold text-gray-900 mb-3">Customer Information</h3>
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div>
+                      <p className="text-sm font-medium text-gray-500">Name</p>
+                      <p className="text-base text-gray-900">{selectedBooking.user_name}</p>
+                    </div>
+                    <div>
+                      <p className="text-sm font-medium text-gray-500">Email</p>
+                      <p className="text-base text-gray-900">{selectedBooking.user_email}</p>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Booking Details */}
+                <div>
+                  <h3 className="text-lg font-semibold text-gray-900 mb-3">Booking Details</h3>
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div>
+                      <p className="text-sm font-medium text-gray-500">Date</p>
+                      <p className="text-base text-gray-900">{new Date(selectedBooking.date).toLocaleDateString()}</p>
+                    </div>
+                    <div>
+                      <p className="text-sm font-medium text-gray-500">Time Slot</p>
+                      <p className="text-base text-gray-900">{selectedBooking.time_slot}</p>
+                    </div>
+                    <div>
+                      <p className="text-sm font-medium text-gray-500">Location</p>
+                      <p className="text-base text-gray-900">{selectedBooking.location}</p>
+                    </div>
+                    <div>
+                      <p className="text-sm font-medium text-gray-500">College</p>
+                      <p className="text-base text-gray-900">{selectedBooking.college_name || 'N/A'}</p>
+                    </div>
+                    <div>
+                      <p className="text-sm font-medium text-gray-500">Status</p>
+                      <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${getStatusColor(selectedBooking.status)}`}>
+                        {getStatusIcon(selectedBooking.status)}
+                        <span className="ml-1">{getDisplayStatus(selectedBooking.status)}</span>
+                      </span>
+                    </div>
+                    <div>
+                      <p className="text-sm font-medium text-gray-500">Booking Type</p>
+                      <p className="text-base text-gray-900">{selectedBooking.is_donor ? 'Donor/Sponsor' : 'Parent/Guardian'}</p>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Participants & Payment */}
+                <div>
+                  <h3 className="text-lg font-semibold text-gray-900 mb-3">Participants & Payment</h3>
+                  <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-4">
+                    <div>
+                      <p className="text-sm font-medium text-gray-500">Total Participants</p>
+                      <p className="text-2xl font-bold text-blue-600">{selectedBooking.participants}</p>
+                    </div>
+                    <div>
+                      <p className="text-sm font-medium text-gray-500">Donation Tickets</p>
+                      <p className="text-2xl font-bold text-green-600">{selectedBooking.donation_tickets}</p>
+                    </div>
+                    <div>
+                      <p className="text-sm font-medium text-gray-500">Total Cost</p>
+                      <p className="text-2xl font-bold text-red-600">${selectedBooking.total_cost}</p>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Attendees List */}
+                {selectedBooking.attendees && selectedBooking.attendees.length > 0 && (
+                  <div>
+                    <h3 className="text-lg font-semibold text-gray-900 mb-3">Attendees ({selectedBooking.attendees.filter(a => a.name).length})</h3>
+                    <div className="bg-gray-50 rounded-lg p-4">
+                      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                        {selectedBooking.attendees.map((attendee, index) => (
+                          attendee.name && (
+                            <div key={index} className="bg-white p-3 rounded-lg border">
+                              <p className="font-medium text-gray-900">{attendee.name}</p>
+                              {attendee.grade && <p className="text-sm text-gray-600">Grade: {attendee.grade}</p>}
+                              {attendee.school && <p className="text-sm text-gray-600">School: {attendee.school}</p>}
+                            </div>
+                          )
+                        ))}
+                      </div>
+                    </div>
+                  </div>
+                )}
+
+                {/* Payment Process */}
+                <div>
+                  <h3 className="text-lg font-semibold text-gray-900 mb-3">Payment Process</h3>
+                  <div className="bg-green-50 border border-green-200 rounded-lg p-4">
+                    <div className="flex items-center">
+                      <div className="flex-shrink-0">
+                        <svg className="h-5 w-5 text-green-400" viewBox="0 0 20 20" fill="currentColor">
+                          <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clipRule="evenodd" />
+                        </svg>
+                      </div>
+                      <div className="ml-3">
+                        <p className="text-sm font-medium text-green-800">
+                          Payment Completed
+                        </p>
+                        <p className="text-sm text-green-700 mt-1">
+                          Total amount of ${selectedBooking.total_cost} has been processed successfully.
+                        </p>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Booking Timeline */}
+                <div>
+                  <h3 className="text-lg font-semibold text-gray-900 mb-3">Booking Timeline</h3>
+                  <div className="space-y-3">
+                    <div className="flex items-center">
+                      <div className="flex-shrink-0 w-8 h-8 bg-blue-100 rounded-full flex items-center justify-center">
+                        <Calendar className="h-4 w-4 text-blue-600" />
+                      </div>
+                      <div className="ml-4">
+                        <p className="text-sm font-medium text-gray-900">Booking Created</p>
+                        <p className="text-sm text-gray-500">{new Date(selectedBooking.created_at).toLocaleString()}</p>
+                      </div>
+                    </div>
+                    <div className="flex items-center">
+                      <div className="flex-shrink-0 w-8 h-8 bg-green-100 rounded-full flex items-center justify-center">
+                        <DollarSign className="h-4 w-4 text-green-600" />
+                      </div>
+                      <div className="ml-4">
+                        <p className="text-sm font-medium text-gray-900">Payment Processed</p>
+                        <p className="text-sm text-gray-500">Payment completed successfully</p>
+                      </div>
+                    </div>
+                    <div className="flex items-center">
+                      <div className="flex-shrink-0 w-8 h-8 bg-yellow-100 rounded-full flex items-center justify-center">
+                        <Clock className="h-4 w-4 text-yellow-600" />
+                      </div>
+                      <div className="ml-4">
+                        <p className="text-sm font-medium text-gray-900">Session Scheduled</p>
+                        <p className="text-sm text-gray-500">{new Date(selectedBooking.date).toLocaleDateString()} at {selectedBooking.time_slot}</p>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              <div className="p-6 border-t border-gray-200 bg-gray-50">
+                <div className="flex justify-end space-x-3">
+                  <button
+                    onClick={() => setSelectedBooking(null)}
+                    className="px-4 py-2 text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors"
+                  >
+                    Close
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
       </div>
     </div>
   );
