@@ -17,7 +17,7 @@ async function setupAdmin() {
     }
 
     // Create admin user
-    const adminPassword = 'admin123'; // Change this in production
+    const adminPassword = process.env.ADMIN_PASSWORD || 'admin123'; // Use environment variable or default
     const passwordHash = await bcrypt.hash(adminPassword, 12);
     
     const result = await pool.query(
