@@ -304,3 +304,4 @@ The API logs all requests and errors to the console. Check the terminal output f
 ## License
 
 MIT
+

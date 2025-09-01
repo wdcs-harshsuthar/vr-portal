@@ -105,3 +105,4 @@ const initDatabase = async () => {
 };
 
 module.exports = { pool, initDatabase };
+

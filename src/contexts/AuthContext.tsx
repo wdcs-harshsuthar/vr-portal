@@ -1,5 +1,4 @@
 import React, { createContext, useContext, useState, useEffect, ReactNode } from 'react';
-<<<<<<< HEAD
 import { 
   loginUser, 
   signupUser, 
@@ -13,8 +12,8 @@ interface User {
   id: string;
   name: string;
   email: string;
-  role: string;
   created_at: string;
+  updated_at: string;
 }
 
 interface Booking {
@@ -31,21 +30,17 @@ interface Booking {
   created_at: string;
   updated_at: string;
 }
-=======
-import { supabase } from '../lib/supabase';
-import { loginUser, signupUser, logoutUser, getCurrentUser, User } from '../lib/auth';
->>>>>>> 8c9d782b51df86acdf3f79094d50305611f9cc65
 
 interface AuthContextType {
   user: User | null;
-  bookings: any[];
-  login: (email: string, password: string) => Promise<{ success: boolean; error?: string }>;
-  signup: (email: string, password: string, name: string) => Promise<{ success: boolean; error?: string }>;
+  bookings: Booking[];
+  login: (credentials: LoginCredentials) => Promise<{ success: boolean; error?: string; message?: string }>;
+  signup: (credentials: SignupCredentials) => Promise<{ success: boolean; error?: string; message?: string }>;
   logout: () => Promise<void>;
   isAuthenticated: boolean;
-  isAdmin: boolean;
   isLoading: boolean;
   refreshBookings: () => Promise<void>;
+  refreshProfile: () => Promise<void>;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
@@ -64,32 +59,25 @@ interface AuthProviderProps {
 
 export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
   const [user, setUser] = useState<User | null>(null);
-  const [bookings, setBookings] = useState<any[]>([]);
+  const [bookings, setBookings] = useState<Booking[]>([]);
   const [isLoading, setIsLoading] = useState(true);
 
-<<<<<<< HEAD
-  // Fetch user bookings from the new API
+  // Fetch user bookings
   const fetchBookings = async (userId: string) => {
     try {
-      const token = localStorage.getItem('token');
-      if (!token) return [];
+      const { data, error } = await import('../lib/supabase').then(m => m.supabase)
+        .from('bookings')
+        .select('*')
+        .eq('user_id', userId)
+        .order('created_at', { ascending: false });
 
-      const response = await fetch(`${import.meta.env.VITE_API_URL || 'http://localhost:3001/api'}/bookings`, {
-        headers: {
-          'Authorization': `Bearer ${token}`,
-          'Content-Type': 'application/json',
-        },
-      });
-
-      if (!response.ok) {
-        console.error('Error fetching bookings:', response.statusText);
+      if (error) {
+        console.error('Error fetching bookings:', error);
         return [];
       }
 
-      const data = await response.json();
-      
       // Transform time_slot to timeSlot for consistency
-      const transformedData = (data.bookings || []).map((booking: any) => ({
+      const transformedData = (data || []).map(booking => ({
         ...booking,
         timeSlot: booking.time_slot
       }));
@@ -118,109 +106,66 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
   };
 
   // Initialize auth state
-=======
-  // Check for existing session on mount
->>>>>>> 8c9d782b51df86acdf3f79094d50305611f9cc65
   useEffect(() => {
-    const checkSession = async () => {
+    const initializeAuth = async () => {
       try {
-        setIsLoading(true);
         const currentUser = await getCurrentUser();
         
         if (currentUser) {
           setUser(currentUser);
-          await loadUserBookings(currentUser.id);
+          const userBookings = await fetchBookings(currentUser.id);
+          setBookings(userBookings);
+        } else {
+          setUser(null);
+          setBookings([]);
         }
       } catch (error) {
-        console.error('Session check error:', error);
+        console.error('Error initializing auth:', error);
+        setUser(null);
+        setBookings([]);
       } finally {
         setIsLoading(false);
       }
     };
 
-    checkSession();
+    initializeAuth();
   }, []);
 
-  const loadUserBookings = async (userId: string) => {
+  const login = async (credentials: LoginCredentials) => {
     try {
-      const { data, error } = await supabase
-        .from('bookings')
-        .select('*')
-        .eq('user_id', userId)
-        .order('created_at', { ascending: false });
-
-      if (!error && data) {
-        setBookings(data);
+      const result = await loginUser(credentials);
+      if (result.success && result.user) {
+        setUser(result.user);
+        const userBookings = await fetchBookings(result.user.id);
+        setBookings(userBookings);
       }
+      return result;
     } catch (error) {
-      console.error('Error loading bookings:', error);
+      return { success: false, error: 'An unexpected error occurred' };
     }
   };
 
-  const login = async (email: string, password: string) => {
+  const signup = async (credentials: SignupCredentials) => {
     try {
-      setIsLoading(true);
-      const result = await loginUser({ email, password });
-
+      const result = await signupUser(credentials);
       if (result.success && result.user) {
         setUser(result.user);
-        await loadUserBookings(result.user.id);
-        return { success: true };
+        const userBookings = await fetchBookings(result.user.id);
+        setBookings(userBookings);
       }
-
-      return { success: false, error: result.error };
+      return result;
     } catch (error) {
-      return { success: false, error: 'Login failed' };
-    } finally {
-      setIsLoading(false);
-    }
-  };
-
-  const signup = async (email: string, password: string, name: string) => {
-    try {
-      setIsLoading(true);
-      const result = await signupUser({ email, password, name });
-
-      if (result.success && result.user) {
-        setUser(result.user);
-        return { success: true };
-      }
-
-      return { success: false, error: result.error };
-    } catch (error) {
-      return { success: false, error: 'Signup failed' };
-    } finally {
-      setIsLoading(false);
+      return { success: false, error: 'An unexpected error occurred' };
     }
   };
 
   const logout = async () => {
     try {
-      console.log('Starting logout process...');
-      
-      // Clear user state immediately
-      setUser(null);
-      setBookings([]);
-      
-      // Call logout function to clear server-side session
       await logoutUser();
-      
-      console.log('Logout completed, redirecting to login...');
-      
-      // Force redirect to login page
-      window.location.href = '/login';
-    } catch (error) {
-      console.error('Logout error:', error);
-      // Even if logout fails, clear local state and redirect
       setUser(null);
       setBookings([]);
-      window.location.href = '/login';
-    }
-  };
-
-  const refreshBookings = async () => {
-    if (user) {
-      await loadUserBookings(user.id);
+    } catch (error) {
+      console.error('Error logging out:', error);
     }
   };
 
@@ -231,9 +176,9 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
     signup,
     logout,
     isAuthenticated: !!user,
-    isAdmin: user?.role === 'admin',
     isLoading,
     refreshBookings,
+    refreshProfile,
   };
 
   return (
